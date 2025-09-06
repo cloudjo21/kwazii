@@ -1,0 +1,423 @@
+classes: {
+    NONE: {label: ""; style.opacity: 0; style.fill: transparent; style.stroke: transparent}
+    BLUE: {style.stroke: "#59c8df"; style.fill: "#59c8df"; style.border-radius: 10}
+    PINK: {style.stroke: "#ffc0cb"; style.fill: "#ffc0cb"; style.border-radius: 10}
+    RED: {style.stroke: "#d14d28"; style.fill: "#d14d28"}
+    YELLOW: {style.stroke: "#f5df65"; style.fill: "#f5df65"}
+    GREEN: {style.stroke: "#2b9464"; style.fill: "#2b9464"; style.border-radius: 10}
+}
+
+
+grid-rows: 4
+
+x: {
+    label: ""
+
+    grid-rows: 3
+    grid-columns: 3
+    # document -- expected_query_chain
+
+    document: {
+        class: BLUE
+        height: 50
+        # near: top-left
+    }
+
+    0,1: {
+        class: NONE
+    }
+    0,2: {
+        class: NONE
+    }
+
+    
+    1,0: {
+        class: NONE
+    }
+    1,1: {
+        class: NONE
+    }
+    expected_query_chain: {
+        label: expected_query_chain
+        
+        grid-rows: 2
+        grid-columns: 3
+
+        # 0,0: {
+        #     label: document
+        #     class: BLUE
+        # }
+        0,1: {
+            label: estimate_num_quries
+            class: YELLOW
+        }
+        0,2: {
+            label: expected_queries_prompt
+            class: PINK
+        }
+        0,3: {
+            label: LLM
+            class: RED
+        }
+        1,0: {
+            label: ""
+            class: NONE
+        }
+        1,2: {
+            label: "expected_queries"
+            class: GREEN
+        }
+        1,3: {
+            label: "fetch_expected_queries"
+            class: YELLOW
+        }
+
+        0,1 -> 0,2 -> 0,3
+        0,3 -> 1,3 -> 1,2
+    }
+    document2: {
+        label: document
+        class: BLUE
+        # near: bottom-left
+
+        height: 100
+        width: 250
+
+        grid-rows: 1
+        # seq_num: {
+        #     height: 10
+        #     width: 80
+        # }
+        # expected_query_seq_num: {
+        #     height: 10
+        #     width: 80
+        #     label: "expected_query_seq_num"
+        #     # equation:   |latex
+        #     #     \\tiny{expected_query_seq_num}
+        #     # |
+        # }
+        expected_queries: {
+            height: 20
+            width: 150
+        }
+    }
+
+    document -> expected_query_chain.0,1
+    expected_query_chain.1,2 -> document2
+}
+
+x1: {
+    label: ""
+
+    grid-rows: 2
+    grid-columns: 2
+
+
+    input: "" {
+        grid-columns: 1
+        question: {
+            class: BLUE
+        }
+    }
+    input.style.stroke: transparent
+
+    split_chunk_chain: {
+        direction: down 
+
+        # to fix direction
+        split_docs -- preproc_batch -- p2: {
+            style: {
+                opacity: 0
+            }
+        }
+
+        split_docs -> preproc_batch.preproc_chain.intent_chain.intent.intent_prompt: chunk-of-question: {
+            style.stroke-dash: 3
+        }
+        split_docs -> preproc_batch.preproc_chain.sent_type_chain.sent_type.sent_type_prompt: chunk-of-question: {
+            style.stroke-dash: 3
+        }
+        split_docs -> preproc_batch.preproc_chain.keyword_extract_chain.keywords.keyword_extract_prompt: chunk-of-question: {
+            style.stroke-dash: 3
+        }
+
+        preproc_batch.preproc_chain.intent_chain.intent.LLM -> p2.chunks: intent: {
+            style.stroke-dash: 3
+        }
+        preproc_batch.preproc_chain.sent_type_chain.sent_type.LLM -> p2.chunks: sent_type: {
+            style.stroke-dash: 3
+        }
+        preproc_batch.preproc_chain.keyword_extract_chain.keywords.LLM -> p2.chunks: keywords: {
+            style.stroke-dash: 3
+        }
+
+        split_docs: {
+            class: YELLOW
+        }
+        # p0: "" {
+        #     grid-rows: 1
+        #     split_docs: {
+        #         class: YELLOW
+        #     }
+        # }
+        # 0,1: {
+        #     class: NONE
+        # }
+        # 1,0: {
+        #     class: NONE
+        # }
+        preproc_batch: {
+            class: YELLOW
+
+            grid-columns: 1
+
+            preproc_chain: {
+                grid-columns: 3
+                direction: right
+
+                intent_chain: {
+                    intent: {
+                        grid-rows: 1
+                        class: BLUE
+                        direction: right
+
+                        intent_prompt: {
+                            class: PINK
+                        }
+                        LLM: {
+                            class: RED
+                        }
+                        intent_prompt -> LLM
+                    }
+                }
+                sent_type_chain: {
+                    sent_type: {
+                        grid-rows: 1
+                        class: BLUE
+                        direction: right
+
+                        sent_type_prompt: {
+                            class: PINK
+                        }
+                        LLM: {
+                            class: RED
+                        }
+                        sent_type_prompt -> LLM
+                    }
+                }
+                keyword_extract_chain: {
+                    keywords: {
+                        grid-rows: 1
+                        class: BLUE
+                        direction: right
+
+                        keyword_extract_prompt: {
+                            class: PINK
+                        }
+                        LLM: {
+                            class: RED
+                        }
+                        keyword_extract_prompt -> LLM
+                    }
+                }
+            }
+        }
+        p2: "" {
+            chunks: {
+                class: BLUE
+            }
+        }
+
+    }
+    # 1,1: {
+    #     class: NONE
+    # }
+    # 1,2: {
+    #     class: NONE
+    # }
+    # 1,3: {
+    #     class: NONE
+    # }
+    # 2,0: {
+    #     class: NONE
+    # }
+    intent_summary_doc_chain: {
+
+        summarize_branch_chain: {
+
+            summary: {
+                class: BLUE
+            }
+        }
+        document: {
+            class: BLUE
+        }
+    }
+    # 
+    input.question -> split_chunk_chain.split_docs
+}
+
+labels: {
+    label: ""
+    grid-rows: 1
+    grid-gap: 0
+    style.opacity: 0
+
+    a: ⬤ IN/OUT DATA {
+        style.font-color: "#59c8df"
+        style.stroke: transparent
+        style.fill: transparent
+    }
+    b: ⬤ LAMBDA {
+        style.font-color: "#f5df65"
+        style.stroke: transparent
+        style.fill: transparent
+    }
+    c: ⬤ PROMPT {
+        style.font-color: "#ffc0cb"
+        style.stroke: transparent
+        style.fill: transparent
+    }
+    d: ⬤ LLM {
+        style.font-color: "#d14d28"
+        style.stroke: transparent
+        style.fill: transparent
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# x2: {
+#     label: ""
+
+#     grid-rows: 3
+#     grid-columns: 3
+
+
+#     question: {
+#         class: BLUE
+#     }
+#     0,1: {
+#         class: NONE
+#     }
+#     0,2: {
+#         class: NONE
+#     }
+#     1,0: {
+#         class: NONE
+#     }
+#     split_chain: {
+#         label.near: outside-top-center
+
+#         grid-rows: 2
+#         grid-columns: 2
+
+#         question_classify_chain: {
+
+#             sent_type_chain: {
+#                 sent_type: {
+#                     grid-rows: 1
+#                     a: {
+#                         label: sent_type_prompt
+#                         class: PINK
+#                     }
+#                     b: {
+#                         label: LLM
+#                         class: RED
+#                     }
+#                     a -> b
+
+#                 }
+#                 class: BLUE
+#             }
+#             intent_chain: {
+#                 intent: {
+#                     grid-rows: 1
+#                     a: {
+#                         label: intent_prompt
+#                         class: PINK
+#                     }
+#                     b: {
+#                         label: LLM
+#                         class: RED
+#                     }
+#                     a -> b
+#                 }
+#                 class: BLUE
+#             }
+#         }
+#         0,1: {
+#             class: NONE
+#         }
+#         split_docs: {
+#             class: YELLOW
+#         }
+#         1,0: {
+#             class: NONE
+#         }
+#     }
+#     1,1: {
+#         class: NONE
+#     }
+#     question_with_metadata: {
+#         # label.near: top-left
+#         class: BLUE
+#         height: 120
+#         width: 250
+#         grid-rows: 1
+#         grid-gap: 0
+#         # grid-columns: 2
+
+#         question: {
+#             height: 20
+#             width: 100
+#             label.near: outside-top-center
+#         }
+#         metadata: {
+#             label.near: outside-top-center
+#             vertical-gap: 0
+#             horizontal-gap: 0
+#             grid-gap: 0
+#             grid-columns: 1
+#             # height: 50
+#             # width: 100
+#             sent_type: {
+#                 height: 20
+#                 style.font-size: 10
+#             }
+#             intent: {
+#                 height: 20
+#                 style.font-size: 10
+#             }
+#         }
+#     }
+#     2,1: {
+#         class: NONE
+#     }
+#     2,2: {
+#         class: NONE
+#     }
+
+#     question -> split_chain.question_classify_chain.sent_type_chain.sent_type.a
+#     question -> split_chain.question_classify_chain.intent_chain.intent.a
+#     split_chain.question_classify_chain.sent_type_chain.sent_type -> split_chain.split_docs
+#     split_chain.question_classify_chain.intent_chain.intent -> split_chain.split_docs
+#     split_chain.split_docs -> question_with_metadata
+# }
