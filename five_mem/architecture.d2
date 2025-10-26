@@ -1,0 +1,418 @@
+# Five Memory System Architecture
+# 사건의 경계선과 에피소드 기억 시스템
+
+direction: down
+
+# ============================================================================ 
+# 핵심 맥락 항목 정의 (Core Context Items Definition)
+# ============================================================================
+
+core_context: {
+  shape: rectangle
+  style.fill: "#E8F4FD"
+  style.stroke: "#1976D2"
+
+  title: "핵심 맥락 항목 정의\n(Core Context Items)"
+
+  EventEntity: {
+    shape: class
+    style: {
+      font-size: 14
+      bold: true
+      font-color: "#1F2937"
+    }
+    style.fill: "#FFF3E0"
+    "created_at": "datetime"
+    "updated_at": "datetime"
+    "deleted_at": "Optional[datetime]"
+  }
+
+  Message: {
+    shape: class
+    style: {
+      font-size: 14
+      bold: true
+      font-color: "#1F2937"
+    }
+    style.fill: "#F3E5F5"
+    "id": "UUID"
+    "user_id": "UUID"
+    "session_id": "UUID"
+    "author": "Literal[user, assistant]"
+    "turn": "int"
+    "payload": "str"
+  }
+ 
+}
+
+# ============================================================================
+# 사건의 경계선 나누기 (Event Boundary Detection)
+# ============================================================================
+
+boundary_detection: {
+  shape: rectangle
+  style: {
+    font-size: 14
+    bold: true
+    font-color: "#1F2937"
+  }
+  style.fill: "#FFF8E1"
+  style.stroke: "#F57C00"
+
+  title: "사건의 경계선 나누기\n(Event Boundary Detection)"
+
+  EventBoundaryTurn: {
+    shape: class
+    style: {
+      font-size: 14
+      bold: true
+      font-color: "#1F2937"
+    }
+    style.fill: "#FFECB3"
+    "turn": "int"
+    "boundary_type": "List[BoundaryType]"
+    "evidence": "str"
+    "summary": "str"
+  }
+
+  EventMessages: {
+    shape: class
+    style: {
+      font-size: 14
+      bold: true
+      font-color: "#1F2937"
+    }
+    style.fill: "#FFF3E0"
+    "id": "UUID"
+    "session_id": "UUID"
+    "messages": "List[Message]"
+    "begin_of_turn": "int"
+    "end_of_turn": "int"
+  }
+
+  EventBoundary: {
+    shape: class
+    style: {
+      font-size: 14
+      bold: true
+      font-color: "#1F2937"
+    }
+    style.fill: "#FFE0B2"
+    "id": "UUID"
+    "boundary_turn": "EventBoundaryTurn"
+  }
+
+  EventCandidate: {
+    shape: class
+    style: {
+      font-size: 14
+      bold: true
+      font-color: "#1F2937"
+    }
+    style.fill: "#FFCC80"
+    "id": "UUID"
+    "event_msg_id": "UUID"
+    "boundary": "Optional[EventBoundary]"
+  }
+
+  # Builders and Processors
+  LastStateUpdater: {
+    shape: class
+    # Modern clean look
+    style: {
+      font-size: 14
+      bold: true
+      font-color: "#1F2937"
+    }
+    style.fill: "#E1F5FE"
+    "states": "Dict[str, Any]"
+    "update": "new_turn -> void"
+  }
+
+  EventMessagesBuilder: {
+    shape: class
+    style: {
+      font-size: 14
+      bold: true
+      font-color: "#1F2937"
+    }
+    style.fill: "#E1F5FE"
+    "states": "Dict[str, Any]"
+    "build": "boundaries, session_id -> List[EventMessages]"
+  }
+
+  EventCandidatesBuilder: {
+    shape: class
+    style: {
+      font-size: 14
+      bold: true
+      font-color: "#1F2937"
+    }
+    style.fill: "#E1F5FE"
+    "states": "Dict[str, Any]"
+    "build": "event_messages, boundaries -> List[EventCandidate]"
+  }
+
+  # Relationships
+  EventBoundary -> EventBoundaryTurn: contains
+  EventCandidate -> EventBoundary: references
+  EventCandidate -> EventMessages: references
+
+  EventMessagesBuilder -> EventMessages: creates
+  EventCandidatesBuilder -> EventCandidate: creates
+}
+
+# ============================================================================
+# 에피소드 청킹 (Episode Chunking)
+# ============================================================================
+
+episode_chunking: {
+  shape: rectangle
+  style.fill: "#F1F8E9"
+  style.stroke: "#689F38"
+
+  title: "에피소드 청킹\n(Episode Chunking)"
+
+  Episode: {
+    shape: class
+    style: {
+      font-size: 14
+      bold: true
+      font-color: "#1F2937"
+    }
+    style.fill: "#E8F5E8"
+    "title": "str"
+    "summary": "str"
+    "who": "str"
+    "where": "str"
+    "when": "datetime"
+    "topic": "str"
+    "subtopic": "Optional[str]"
+    "user_goal": "str"
+    "agent_commitments": "List[str]"
+    "affective_cue": "Optional[str]"
+    "salient_affect": "Optional[str]"
+    "surprise_event": "Optional[str]"
+    "policy_flags": "Optional[List[str]]"
+    "boundary_type": "BoundaryType"
+  }
+
+  EpisodeAfterBoundary: {
+    shape: class
+    style: {
+      font-size: 14
+      bold: true
+      font-color: "#1F2937"
+    }
+    style.fill: "#E3F2FD"
+    "constraints": "List[str]"
+    "decisions": "List[str]"
+    "followups": "List[str]"
+  }
+
+  Episode -> EpisodeAfterBoundary: extends
+
+  EpisodeCandidate: {
+    shape: class
+    style.fill: "#DCEDC8"
+    "message_history": "str"
+    "begin_of_turn": "int"
+    "end_of_turn": "int"
+    "message_count": "int"
+    "boundary_turn": "int"
+    "boundary_types": "List[BoundaryType]"
+    "boundary_evidence": "str"
+    "boundary_summary": "str"
+    "from_event_messages": "static method"
+  }
+
+  Insight: {
+    shape: class
+    style: {
+        font-size: 14
+        bold: true
+        font-color: "#1F2937"
+    }
+    style.fill: "#C8E6C9"
+    "constraints": "List[str]"
+    "decisions": "List[str]"
+    "followups": "List[str]"
+  }
+
+  # Episode Processing Modules
+  EpisodeStateUpdater: {
+    shape: class
+    style: {
+        font-size: 14
+        bold: true
+        font-color: "#1F2937"
+    }
+    style.fill: "#E8F5E8"
+    "states": "Dict[str, Any]"
+    "update": "episode, user_id -> void"
+  }
+
+  EpisodeAfterBoundaryBuilder: {
+    shape: class
+    style: {
+        font-size: 14
+        bold: true
+        font-color: "#1F2937"
+    }
+    style.fill: "#E8F5E8"
+    "build": "episode, insight -> EpisodeAfterBoundary"
+  }
+
+  EpisodeAfterBoundaryStateUpdater: {
+    shape: class
+    style: {
+        font-size: 14
+        bold: true
+        font-color: "#1F2937"
+    }
+    style.fill: "#E8F5E8"
+    "states": "Dict[str, Any]"
+    "update": "user_id -> void"
+  }
+
+  # Relationships
+  EpisodeCandidate -> EpisodeAfterBoundary: "transforms to"
+  EpisodeAfterBoundaryBuilder -> EpisodeAfterBoundary: creates
+  EpisodeAfterBoundaryBuilder -> Insight: uses
+}
+
+# ============================================================================
+# 의미 기억 구축 (Semantic Memory Construction)
+# ============================================================================
+
+semantic_memory: {
+  shape: rectangle
+  style.fill: "#FCE4EC"
+  style.stroke: "#C2185B"
+
+  title: "의미 기억 구축\n(Semantic Memory Construction)"
+
+  SemanticMemoryEntry: {
+    shape: class
+    style: {
+        font-size: 14
+        bold: true
+        font-color: "#1F2937"
+    }
+    style.fill: "#F8BBD9"
+    "name": "str"
+    "summary": "str"
+    "details": "str"
+    "source": "str"
+    "category_path": "str"
+    "old_entry_id": "Optional[str]"
+  }
+
+  SemanticMemoryEntryEntity: {
+    shape: class
+    style: {
+        font-size: 14
+        bold: true
+        font-color: "#1F2937"
+    }
+    style.fill: "#F48FB1"
+    "memory_entry": "SemanticMemoryEntry"
+  }
+
+  SemanticMemoryOperation: {
+    shape: class
+    style: {
+        font-size: 14
+        bold: true
+        font-color: "#1F2937"
+    }
+    style.fill: "#F06292"
+    "operation": "Literal[add, update, delete]"
+    "reasoning": "str"
+    "entry_id": "str"
+    "name": "Optional[str]"
+    "summary": "Optional[str]"
+    "details": "Optional[str]"
+    "source": "Optional[str]"
+    "category_path": "Optional[str]"
+    "old_entry_id": "Optional[str]"
+  }
+
+  SemanticMemoryOperationEntity: {
+    shape: class
+    style: {
+        font-size: 14
+        bold: true
+        font-color: "#1F2937"
+    }
+    style.fill: "#EC407A"
+    "memory_op": "SemanticMemoryOperation"
+  }
+
+  SessionMessageHistory: {
+    shape: class
+    style: {
+        font-size: 14
+        bold: true
+        font-color: "#1F2937"
+    }
+    style.fill: "#F8BBD9"
+    "messages": "List[str]"
+  }
+
+  SemanticMemoryEntryEntityBuilder: {
+    shape: class
+    style: {
+        font-size: 14
+        bold: true
+        font-color: "#1F2937"
+    }
+    style.fill: "#E1BEE7"
+    "build": "entries -> List[SemanticMemoryEntryEntity]"
+  }
+
+  # Relationships
+  SemanticMemoryEntryEntity -> SemanticMemoryEntry: contains
+  SemanticMemoryOperationEntity -> SemanticMemoryOperation: contains
+  SemanticMemoryEntryEntityBuilder -> SemanticMemoryEntryEntity: creates
+}
+
+# ============================================================================
+# Cross-Section Relationships
+# ============================================================================
+
+# Data Flow Connections
+boundary_detection.EventMessages -> core_context.Message: contains
+boundary_detection.EventCandidate -> episode_chunking.EpisodeCandidate: "converted to"
+episode_chunking.Episode -> episode_chunking.EpisodeAfterBoundary: "enhanced to"
+episode_chunking.EpisodeAfterBoundary -> semantic_memory.SessionMessageHistory: "feeds into"
+
+# Inheritance Relationships  
+core_context.EventEntity -> boundary_detection.EventMessages: inherits
+core_context.EventEntity -> boundary_detection.EventBoundary: inherits
+core_context.EventEntity -> boundary_detection.EventCandidate: inherits
+core_context.EventEntity -> semantic_memory.SemanticMemoryEntryEntity: inherits
+core_context.EventEntity -> semantic_memory.SemanticMemoryOperationEntity: inherits
+
+# Processing Flow
+boundary_detection.LastStateUpdater -> boundary_detection.EventMessagesBuilder: "state management"
+boundary_detection.EventMessagesBuilder -> boundary_detection.EventCandidatesBuilder: "pipeline"
+episode_chunking.EpisodeStateUpdater -> episode_chunking.EpisodeAfterBoundaryBuilder: "episode processing"
+episode_chunking.EpisodeAfterBoundaryBuilder -> episode_chunking.EpisodeAfterBoundaryStateUpdater: "finalization"
+
+# ============================================================================
+# Legend and Notes
+# ============================================================================
+
+legend: {
+  shape: rectangle
+  style.fill: "#FAFAFA"
+  style.stroke: "#9E9E9E"
+
+  title: "범례 (Legend)"
+  note1: "🔵 핵심 맥락 항목: 기본 데이터 모델"
+  note2: "🟠 사건의 경계선: 경계 감지 및 이벤트 처리"
+  note3: "🟢 에피소드 청킹: 에피소드 생성 및 분석"
+  note4: "🔴 의미 기억: 장기 기억 구축"
+  note5: "📊 실선: 직접적 관계, 점선: 상속/확장"
+}
