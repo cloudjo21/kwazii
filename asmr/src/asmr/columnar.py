@@ -7,12 +7,6 @@ from asmr import vocab
 from asmr.tokenize import helpers
 
 
-# def stream_docs(columnar_texts: Iterable[str], token2id: marisa_trie.Trie) -> Iterable[np.ndarray]:
-#     for text in columnar_texts:
-#         tokens = text.lower().split()  # TODO: improve tokenization
-#         token_ids = np.array([token2id[token] for token in tokens if token in token2id], dtype=np.int32)
-#         yield token_ids
-
 class ColumnarTextStream(Iterable):
     def __init__(self, texts: Iterable[str], token2id: marisa_trie.Trie, tokenizer: helpers.TokenizerWrapper):
         self.texts = texts
@@ -21,7 +15,7 @@ class ColumnarTextStream(Iterable):
 
     def __iter__(self):
         for text in self.texts:
-            tokens = text.lower().split()  # TODO: improve tokenization
+            tokens = self.tokenizer.tokenize(text)
             token_ids = np.array([self.token2id[token] for token in tokens if token in self.token2id], dtype=np.int32)
             yield token_ids
 
