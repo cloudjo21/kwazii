@@ -1,0 +1,171 @@
+import numpy as np
+import faiss
+import os
+from typing import List, Union, Optional
+from PIL import Image
+from pathlib import Path
+
+from fde.base import BaseFdeEncoder
+from fde.config import PromptType
+from asmr.index.config import FieldConfig
+
+
+class ImageEncodingIndexer:
+    """Image encoding indexer using MultiModalFdeEncoder with FAISS support"""
+    
+    def __init__(self, encoder: BaseFdeEncoder, config: FieldConfig):
+        self.encoder = encoder
+        self.config = config
+        self.doc_ids: List[str] = []
+        self.index: Optional[faiss.Index] = None
+        self.dimension: Optional[int] = None
+        
+        # Initialize or load FAISS index
+        self._initialize_faiss_index()
+    
+    def _initialize_faiss_index(self):
+        """Initialize FAISS index from config path or create new one"""
+        if self.config.faiss_index_path and os.path.exists(self.config.faiss_index_path):
+            self.load_index(self.config.faiss_index_path)
+        else:
+            # Will be initialized when first documents are added
+            self.index = None
+    
+    def _create_faiss_index(self, dimension: int):
+        """Create a new FAISS index with specified dimension"""
+        self.dimension = dimension
+        # Use IndexFlatIP for cosine similarity (after normalization)
+        self.index = faiss.IndexFlatIP(dimension)
+    
+    def add_documents(self, doc_ids: List[str], images: List[Union[str, Image.Image]]):
+        """Add image documents to the index (batch processing)"""
+        if not doc_ids or not images:
+            return
+            
+        if len(doc_ids) != len(images):
+            raise ValueError("Number of doc_ids must match number of images")
+        
+        # Convert string paths to PIL Images if needed
+        processed_images = []
+        for image in images:
+            if isinstance(image, str):
+                processed_images.append(Image.open(image))
+            elif isinstance(image, Image.Image):
+                processed_images.append(image)
+            else:
+                raise ValueError(f"Unsupported image type: {type(image)}")
+        
+        # Encode images using the FDE encoder (batch processing)
+        embeddings = self.encoder.encode_image(processed_images)
+        
+        # Initialize index if needed
+        if self.index is None:
+            self._create_faiss_index(embeddings.shape[1])
+        
+        # Normalize embeddings for cosine similarity
+        faiss.normalize_L2(embeddings)
+        
+        # Add to FAISS index
+        self.index.add(embeddings)
+        
+        # Keep track of doc IDs
+        self.doc_ids.extend(doc_ids)
+    
+    def add_document(self, doc_id: str, image: Union[str, Image.Image]):
+        """Add a single image document (wrapper for batch method)"""
+        self.add_documents([doc_id], [image])
+    
+    def search(self, query_image: Union[str, Image.Image], k: int = 10) -> List[tuple]:
+        """Search for similar images"""
+        if self.index is None or self.index.ntotal == 0:
+            return []
+        
+        # Process query image
+        if isinstance(query_image, str):
+            query_image = Image.open(query_image)
+        
+        # Encode query image
+        query_embedding = self.encoder.encode_image([query_image])
+        
+        # Normalize query embedding
+        faiss.normalize_L2(query_embedding)
+        
+        # Search using FAISS
+        k = min(k, self.index.ntotal)
+        similarities, indices = self.index.search(query_embedding, k)
+        
+        # Convert to results format
+        results = []
+        for i, (similarity, idx) in enumerate(zip(similarities[0], indices[0])):
+            if idx != -1:  # Valid result
+                results.append((self.doc_ids[idx], float(similarity)))
+        
+        return results
+    
+    def search_with_text(self, query_text: str, k: int = 10) -> List[tuple]:
+        """Search images using text query (cross-modal search)"""
+        if self.index is None or self.index.ntotal == 0:
+            return []
+        
+        # Encode text query
+        query_embedding = self.encoder.encode_text([query_text], PromptType.QUERY)
+        
+        # Normalize query embedding
+        faiss.normalize_L2(query_embedding)
+        
+        # Search using FAISS
+        k = min(k, self.index.ntotal)
+        similarities, indices = self.index.search(query_embedding, k)
+        
+        # Convert to results format
+        results = []
+        for i, (similarity, idx) in enumerate(zip(similarities[0], indices[0])):
+            if idx != -1:  # Valid result
+                results.append((self.doc_ids[idx], float(similarity)))
+        
+        return results
+    
+    def save_index(self, filepath: Optional[str] = None):
+        """Save the FAISS index to disk"""
+        if filepath is None:
+            filepath = self.config.faiss_index_path
+        
+        if filepath is None:
+            raise ValueError("No filepath provided and no faiss_index_path in config")
+        
+        # Ensure directory exists
+        Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+        
+        if self.index is not None:
+            # Save FAISS index
+            faiss.write_index(self.index, filepath)
+            
+            # Save doc_ids separately
+            doc_ids_path = filepath + ".doc_ids.npy"
+            np.save(doc_ids_path, self.doc_ids)
+    
+    def load_index(self, filepath: str):
+        """Load the FAISS index from disk"""
+        if not os.path.exists(filepath):
+            raise FileNotFoundError(f"FAISS index file not found: {filepath}")
+        
+        # Load FAISS index
+        self.index = faiss.read_index(filepath)
+        self.dimension = self.index.d
+        
+        # Load doc_ids
+        doc_ids_path = filepath + ".doc_ids.npy"
+        if os.path.exists(doc_ids_path):
+            self.doc_ids = np.load(doc_ids_path, allow_pickle=True).tolist()
+        else:
+            # Fallback: generate sequential doc_ids
+            self.doc_ids = [f"doc_{i}" for i in range(self.index.ntotal)]
+    
+    def get_stats(self) -> dict:
+        """Get indexer statistics"""
+        return {
+            "total_documents": len(self.doc_ids),
+            "index_size": self.index.ntotal if self.index else 0,
+            "dimension": self.dimension,
+            "faiss_index_path": self.config.faiss_index_path
+        }
