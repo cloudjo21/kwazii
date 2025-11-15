@@ -346,6 +346,9 @@ from transformers.utils import auto_docstring, can_return_tuple, is_torch_flex_a
 
 if is_flash_attn_available():
     from transformers.modeling_flash_attention_utils import apply_rotary_emb, flash_attn_varlen_func
+    from flash_attn.layers.rotary import apply_rotary_emb
+    from flash_attn.flash_attn_interface import flash_attn_varlen_func
+
 
 
 if is_flash_attn_available():

@@ -6,14 +6,20 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "faiss-cpu>=1.12.0",
+    "huggingface-hub",
     "ipykernel>=6.30.1",
     "marisa-trie>=1.3.1",
     "muvfde>=0.0.9",
+    "numpy",
+    "peft>=0.18.0",
     "pillow>=12.0.0",
     "pydantic>=2.12.3",
+    "requests",
     "scipy>=1.16.1",
-    "torch==2.3.0+cu121",
-    "transformers>=4.0.0",
+    "torch==2.6.0",
+    "torchvision>=0.21.0",
+    "tqdm",
+    "transformers==4.57.1",
 ]
 
 [build-system]
@@ -23,7 +29,28 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["asmr/src"]
 
+[project.optional-dependencies]
+flash-attn = ["flash-attn>=2.5.0"]
+
 [dependency-groups]
 dev = [
+    "torch==2.6.0",
     "pydantic>=2.12.3",
+    "transformers>=4.57.1",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src"]
+pythonpath = [".", "src"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
