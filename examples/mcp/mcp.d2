@@ -1,0 +1,90 @@
+# Model Context Protocol
+# 'AI모델' <-> ['데이터소스', '도구'](context, knowledge, data)
+# 확장성과 상호운용성
+# - LLM 개발환경에 맞춰서, 데이터소스의 접근을 제공하는쪽도 받는쪽도 미리 접근을 표준화 해둔다.
+# 
+MCP_HOST
+explanation: |md
+  # MCP Host
+  - LLM 운용 메인 애플리케이션
+  - 사용자 질문, 명령을 모델에 전달
+  - 모델 응답을 사용자에게 보여주는 전체 흐름 제어
+  - MCP Client를 구동하여 MCP Server들과 연결 유지
+  # MCP Client
+  - Host 애플리케이션 내에서 동작
+  - MCP Server와 1:1 연결 담당
+  - MCP Client 역할은 LLM(Host측) 내에서 MCP Protocol을 구현하여 MCP Server와 통신하고 LLM에 전달
+  # MCP Server
+  - 외부 데이터나 기능을 제공함
+  - 특정 서비스나 데이터 소스를 모델이 이해할 수 있는 형태의 context를 제공함
+  - MCP Host는 여러 MCP Server들로부터 동시에 다양한 context를 획득
+  # Context Elements
+  - LLM의 Context Window에 포함될 내용들
+  - MCP Server는 리소스로 데이터를 제공하고, 도구로 동작을 제공하고, 프롬프트로 상호작용 패턴을 정의하고 제공함
+  ## Resources
+  - 리소스
+  - LLM이 참고할 read-only 데이터
+  - 파일, 데이터베이스 레코드, 문서 등 구조화된 정보
+  - 파일시스템서버는 file://..., DB서버는 query://... 형태로 쿼리 결과를 제공가능함
+  ## Tools
+  - 도구
+  - LLM이 호출가능한 기능이나 함수
+  - 복잡한 계산, 외부 API 요청 등
+  - 날씨 서버에 오늘날씨 조회, 슬랙 채널에 메시널 보내기 등
+  ## Prompts
+  - 프롬프트
+  - LLM에 지시나 템플릿을 제공하는 텍스트
+  - 미리 작성된 시스템/사용자 메시지
+  # JSON-RPC 2.0
+  - MCP 핵심 통신규약
+  - MCP Client/Server는 Json request/response 송수신
+  - `id`, `method`, `result`, `params`
+  # Elements Definition
+  ## Tools
+  - `@mcp.tool()` decorator function
+  - MCP Tool로 노출, MCP Client가 도구 호출
+  - 도구 function의 signature(param types, return type)과 docstring을 기반으로 도구의 스펙(입력 스키마) 생성
+  ## Resources
+  - `@mcp.resource(<URI PATTERN>)` decorator function
+  - `<protocol>://{param}`
+  ## Prompts
+  - MCP Server에서 제공하는 미리 정의된 지침
+  - MCP Client가 LLM에 제공하여 정해둔 형식의 응답을 유도하도록 쓰임
+  # How MCP Works and Its Workflow
+  - MCP Server와 MCP Client의 상호작용과 동작 흐름 살펴보기
+  ## Initialize
+  - 초기화
+  - MCP Client가 MCP Server에 연결 시작, 초기화 메시지를 MCP Server에 전송
+  - MCP Server는 메시지 수신 후 자신이 제공하는 기능과 버전을 응답 (호환성 교섭)
+  - 호환성 교섭에 성공하면, MCP Client/Server 세션 생성
+  ## 기능 협상 및 발견
+  - MCP Client는 MCP Server가 어떤 context functions (resources/tools/prompts) 제공하는지 획득
+  - MCP Client는 MCP Server의 tools를 얻기 위해 `tools/list` method의 JSON-RPC 요청을 MCP Server에 보냄
+  - MCP Server는 자신의 tools의 name, description, input schema 등을 응답
+  - resources는 `resources/index` 같은 요청으로 가용한 리소스 URIs 획득
+  - 제공받을 수 있는 기능 목록을 LLM에 시스템 프롬프트로 전달
+  - 또는 사용자가 UI에서 선택할 수도 있음
+  ## 사용자 요청 처리
+  - MCP Host는 LLM에 사용자의 질문 전달
+  - LLM은 가용한 tools/resources 사용을 질문에 대한 답을 내기 위해 context로 활용
+  - Tools 사용 필요를 함께 판단
+  - LLM은 tool에 대한 실제 호출을 하지 않고, 어떻게 호출할지 결과만 만든다
+  - tool 요청 형태로 만들어 LLM 출력을 만든다
+  ## 도구 호출 요청
+  - LLM이 특정 tool을 쓰고자 할 때 MCP Host의 MCP Client가 도구 호출을 실제로 수행
+  - MCP Client는 MCP Server에 `tools/call` 요청
+    - tool name, params를 jsonrpc JSON으로 전달
+  - MCP Server의 도구 호출 응답의 `content` 필드가 LLM에 삽입될 데이터
+  - `audience`필드로 도구 호출 응답을 누구에게 보일지 제어
+    - 아래는 assistant(LLM)에게만 보이겠다는 설정
+    - `audience: ["assistant"]`
+  ## LLM 응답 생성
+  - MCP Server에서 받은 데이터/실행결과를 LLM이 사용자에게 보여줄 답변을 생성
+  - 이로써, MCP Server로부터 얻은 context를 답변에 반영하여 응답하게 됨
+  
+  
+|
+
+# refereence
+# - https://discuss.pytorch.kr/t/deep-research-model-context-protocol-mcp/6594
+# 
