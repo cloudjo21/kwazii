@@ -1,6 +1,6 @@
 # Integration Tests for ASMR System
 
-This directory contains comprehensive integration tests for the ASMR (Advanced Search, Matching, and Retrieval) system.
+This directory contains comprehensive integration tests for the ASMR (Adaptive Small Modular Retrieval) system.
 
 ## Test Structure
 
@@ -24,7 +24,7 @@ Tests the complete query and retrieval pipeline including:
 
 - **Query Processing**: Text-only, image-only, and multimodal queries
 - **Retrieval Types**: Sparse text, dense text, dense image, and cross-modal
-- **Integration**: FieldComplexRetriever and DocumentRetriever
+- **Integration**: QueryRouter and DocumentRetriever
 - **Compatibility**: Query-field matching and target field detection
 
 #### Query Types Tested:
@@ -92,7 +92,7 @@ STEP 2: QUERY RETRIEVAL INTEGRATION TEST
 ✓ Sparse text retrieval completed
 ✓ Dense multimodal retrieval completed
 ✓ Comprehensive retrieval completed
-✓ FieldComplexRetriever integration successful
+✓ QueryRouter integration successful
 ✓ DocumentRetriever integration successful
 
 🎉 ALL INTEGRATION TESTS PASSED!

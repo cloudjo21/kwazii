@@ -37,7 +37,7 @@ from asmr.retrieve.retrievers import (
     SparseTextFieldRetriever,
     DenseTextFieldRetriever, 
     DenseImageFieldRetriever,
-    FieldComplexRetriever
+    QueryRouter
 )
 from asmr.retrieve.helpers import DocumentRetriever
 from asmr.index.config import FieldConfig, TokenizerType, RepresentationType
@@ -54,6 +54,9 @@ class TestQueryRetrieval(unittest.TestCase):
         
         # Run indexing pipeline from step 1
         self.step1_test.test_indexing_pipeline()
+
+        self.resources_dir = Path(__file__).parent / "resources"
+        self.sample_image_path = self.resources_dir / "uluru_sunrise.jpg"
         
         # Get indexed data
         self.field_indices = self.step1_test.field_indices
@@ -103,8 +106,9 @@ class TestQueryRetrieval(unittest.TestCase):
             
             # Query 2: Dense fields for text and image (multimodal)
             Query.from_multimodal(
-                text="beautiful sunset mountain scenery",
-                image=Image.open("query_sunset.jpg"),  # Mock image
+                # text="beautiful sunrise mountain scenery",
+                text="uluru sunrise mountain",
+                image=Image.open(self.sample_image_path),
                 text_data_type="text",
                 image_data_type="image"
             ),
@@ -187,7 +191,7 @@ class TestQueryRetrieval(unittest.TestCase):
             
             print(f"{field_name}: {len(field_results)} results")
             if field_results:
-                print(f"  Top result: {field_results[0]}")
+                print(f"  Top result: {field_results[0:3]}")
         
         # Test dense image field with text query (cross-modal)
         image_retriever = self.retrievers["review_image"]
@@ -238,17 +242,17 @@ class TestQueryRetrieval(unittest.TestCase):
         return all_results
     
     def test_field_complex_retriever(self):
-        """Test FieldComplexRetriever integration"""
-        print("\\nTesting FieldComplexRetriever integration...")
+        """Test QueryRouter integration"""
+        print("\\nTesting QueryRouter integration...")
         
         # Create complex retriever
-        complex_retriever = FieldComplexRetriever(self.retrievers)
+        complex_retriever = QueryRouter(self.retrievers)
         
         # Test basic retrieval
         query = self.sample_queries[0]
         results = complex_retriever.retrieve("title_sparse", query, k=3)
         self.assertIsInstance(results, list)
-        print(f"FieldComplexRetriever basic retrieval: {len(results)} results")
+        print(f"QueryRouter basic retrieval: {len(results)} results")
         
         # Test multi-field retrieval
         test_fields = ["title_sparse", "content_dense", "review_image"]
@@ -266,7 +270,7 @@ class TestQueryRetrieval(unittest.TestCase):
         self.assertIsInstance(smart_results, dict)
         print(f"Smart retrieval found {len(smart_results)} compatible fields")
         
-        print("✓ FieldComplexRetriever integration successful")
+        print("✓ QueryRouter integration successful")
         return multi_results, smart_results
     
     def test_document_retriever_integration(self):
@@ -274,7 +278,7 @@ class TestQueryRetrieval(unittest.TestCase):
         print("\\nTesting DocumentRetriever integration...")
         
         # Create complex retriever
-        complex_retriever = FieldComplexRetriever(self.retrievers)
+        complex_retriever = QueryRouter(self.retrievers)
         
         # Create document retriever with field configs
         doc_retriever = DocumentRetriever(complex_retriever, self.field_configs)
@@ -398,7 +402,7 @@ TOTAL_FIELDS_TESTED = {len(self.retrievers)}
 # Sample queries used
 SAMPLE_QUERIES = [
     "Sparse text query: amazing food experience restaurant",
-    "Multimodal query: beautiful sunset mountain scenery + image",
+    "Multimodal query: beautiful sunrise mountain scenery + image",
     "Comprehensive query: travel adventure cultural experience"
 ]
 
@@ -414,7 +418,7 @@ RETRIEVERS_TESTED = [
     "SparseTextFieldRetriever",
     "DenseTextFieldRetriever", 
     "DenseImageFieldRetriever",
-    "FieldComplexRetriever",
+    "QueryRouter",
     "DocumentRetriever"
 ]
 
