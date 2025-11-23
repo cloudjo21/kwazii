@@ -6,6 +6,7 @@ from typing import Optional
 class TokenizerType(Enum):
     SPLIT = "split"
     HF_AUTO = "hf_auto"
+    MORPH = "morph"
 
 
 class RepresentationType(Enum):
