@@ -1957,6 +1957,37 @@ wheels = [
 ]
 
 [[package]]
+name = "kiwipiepy"
+version = "0.22.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "kiwipiepy-model" },
+    { name = "numpy" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b6/4c/7df6d91aadae35e4e0703e1693ffb5fba1ad9f77faa40c2a3ed28eea7cd5/kiwipiepy-0.22.0.tar.gz", hash = "sha256:bd993af2a3dbc9049809543e86f6b604844973093eff44292930c84157a05412", size = 3751568, upload-time = "2025-11-16T12:15:15.019Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d4/b6/eae8a4fbb38cd6cae546511bf78b72a5cd9eec832f478f1aa066f26c8b25/kiwipiepy-0.22.0-cp313-cp313-macosx_10_14_x86_64.whl", hash = "sha256:12385a3cbaa7105b6b056e9bf42c83e903ee1507c27ec258bfe84ba2bd380ed8", size = 9737975, upload-time = "2025-11-16T10:59:51.633Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/be/bbb8fce47b893fd4b696c72bf5565d65722be4b081ce626911a90b12b37a/kiwipiepy-0.22.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:14e9558aa7fb293e885c5eb9d330c9643647b81ccfdedf6d3cf2370607db8cfd", size = 3681862, upload-time = "2025-11-16T10:31:55.926Z" },
+    { url = "https://files.pythonhosted.org/packages/82/46/4ce7f3f197d3b0bb9706f70c36dbc05b14db308d3ed6bcf0d8b43fd4f820/kiwipiepy-0.22.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:f1c450fb002338f7243b9cdde868ef8d4bf22cc2f02e38897b0febef927d26a5", size = 7970913, upload-time = "2025-11-16T11:56:48.632Z" },
+    { url = "https://files.pythonhosted.org/packages/68/0b/c76d573d3bc5dbcd528c6cc5efcfd92e992ef6e0700483e98116ab36ccc8/kiwipiepy-0.22.0-cp313-cp313-win_amd64.whl", hash = "sha256:ce5e9e8217ca424f8e0265b1f2aeb402abb783a38dd328b917bfefdc17d1bd7b", size = 2477179, upload-time = "2025-11-16T10:56:36.081Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/b5/2c3e2503be7d0dcd4b668b39fabf69077ae8d0f543ff7f9c03d997a744b1/kiwipiepy-0.22.0-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:2cd2d5766b297887a9e7613f53e3fbb29e87772fb131805a45366421943ecfea", size = 9738075, upload-time = "2025-11-16T10:59:10.035Z" },
+    { url = "https://files.pythonhosted.org/packages/27/6c/5038bbd9568372bd60a64978cf1b41378d2d37a611ded513434dc8889221/kiwipiepy-0.22.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:882afd2cd1e0f334f36aced24125c4483c570b8ba5ac7c17e26d163458ea4a60", size = 3681922, upload-time = "2025-11-16T10:42:37.397Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/76/ce2f91a08b957ac9e545f1bff54a08841fbb780d43789bd214826dd4e8a7/kiwipiepy-0.22.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:1ab6958d542ae7eeb0271eb23e2fe9083c8554799e53d00536c99c58af1de985", size = 7970612, upload-time = "2025-11-16T11:56:49.893Z" },
+    { url = "https://files.pythonhosted.org/packages/25/1a/565ae6957a4869ad9918ec5dde080fc032eabc65a3c15438b6a9ad7b520e/kiwipiepy-0.22.0-cp314-cp314-win_amd64.whl", hash = "sha256:c521aeaf99680702277d5902dc6e86a6f2f9090f730e174757f8fc0b4fa54371", size = 2535226, upload-time = "2025-11-16T10:56:47.394Z" },
+    { url = "https://files.pythonhosted.org/packages/05/8b/b8abaea8a6ddd93a60955770f0da177d2a2c93743ed5e1fafd7db3b5f4d8/kiwipiepy-0.22.0-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:9ff72787aac5e5ecbe1c4ebf490b3e5de50344c87632db99bb49ecef9f0cfb2c", size = 9752565, upload-time = "2025-11-16T11:01:44.906Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/c1/6d12a2fa197c64008470beca4f9f117d80c8b42f5507dac7f7f15c1c5cc6/kiwipiepy-0.22.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:f301de4d799e40f65e9f9e1232a4fde8b828a60451ae88fc32f121219e26bded", size = 3693660, upload-time = "2025-11-16T10:45:17.286Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/9c/a57c6664dc3a839a65ece820ee4d5b9fb9728b4dcc265cf1801f1ec5232a/kiwipiepy-0.22.0-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:a6d86a230fb7769aee80217ca46414fc5d7ab5ca3d2854c02970373cd537106c", size = 7973268, upload-time = "2025-11-16T11:56:51.531Z" },
+    { url = "https://files.pythonhosted.org/packages/30/f3/f2bec4221f3b8e54655e5fb1596543c92d0c565a37d73c6a2112b85fe01a/kiwipiepy-0.22.0-cp314-cp314t-win_amd64.whl", hash = "sha256:7064c3be1306d596db0fda15ea18daf7593fff030134c70deb1bb0ab9ee5995a", size = 2550443, upload-time = "2025-11-16T10:57:28.035Z" },
+]
+
+[[package]]
+name = "kiwipiepy-model"
+version = "0.22.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/64/b449717ff0f3d3237693f191353f8bf9d9cbbe075644253c954508a0ec60/kiwipiepy_model-0.22.0.tar.gz", hash = "sha256:08903d932620294c39b9f9ee4a68f0ac7527ef5d9c66cdc1f4a48a72dd51abc4", size = 79542600, upload-time = "2025-11-16T12:15:38.644Z" }
+
+[[package]]
 name = "kubernetes"
 version = "34.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1990,6 +2021,7 @@ dependencies = [
     { name = "google-adk" },
     { name = "huggingface-hub" },
     { name = "ipykernel" },
+    { name = "kiwipiepy" },
     { name = "litellm" },
     { name = "marisa-trie" },
     { name = "muvfde" },
@@ -2033,6 +2065,7 @@ requires-dist = [
     { name = "google-adk", specifier = "==1.18.0" },
     { name = "huggingface-hub" },
     { name = "ipykernel", specifier = ">=6.30.1" },
+    { name = "kiwipiepy", specifier = ">=0.22.0" },
     { name = "litellm", specifier = ">=1.80.0" },
     { name = "marisa-trie", specifier = ">=1.3.1" },
     { name = "muvfde", specifier = ">=0.0.9" },
