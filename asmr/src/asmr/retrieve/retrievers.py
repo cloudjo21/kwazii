@@ -126,7 +126,7 @@ class QueryRouter:
     def retrieve(self, field: str, query: Union[str, Query], k: int) -> List[tuple]:
         """Retrieve using field name and query (supports both legacy string and Query object)"""
         if field not in self.field_retrievers:
-            raise ValueError(f"Field '{field}' not found in FieldComplexRetriever.")
+            raise ValueError(f"Field '{field}' not found in QueryRouter.")
         retriever = self.field_retrievers[field]
         return retriever.retrieve(query, k)
     
@@ -134,7 +134,7 @@ class QueryRouter:
     def smart_retrieve(self, query: Query, field_name: str, k: int) -> List[tuple]:
         """Smart retrieval for a single field that automatically determines best method based on query content"""
         if field_name not in self.field_retrievers:
-            raise ValueError(f"Field '{field_name}' not found in FieldComplexRetriever.")
+            raise ValueError(f"Field '{field_name}' not found in QueryRouter.")
         retriever = self.field_retrievers[field_name]
         
         try:

@@ -9,7 +9,7 @@ def split_text(text: str, max_length: int) -> list[str]:
     """Splits the input text into chunks of at most max_length characters."""
     words = text.split()
     chunks = []
-    current_chunk = []
+    current_chunk: list[str] = []
 
     for word in words:
         # If adding the next word exceeds max_length, finalize the current chunk

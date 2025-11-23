@@ -25,4 +25,4 @@ notes: working directory: asmr/retrieve/
 # Field Retrieval
 notes: working directory: asmr/retrieve/
 - add retrievers individually corresponding to the one of the field indexes in asmr/index/fields.py if you need
-- update FieldComplexRetriever to support Query class in query.py
+- update QueryRouter to support Query class in query.py

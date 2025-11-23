@@ -63,7 +63,7 @@ print(f"Target fields for text query: {[f.name for f in target_fields]}")
 Example usage with retrievers:
 
 # Setup retrievers
-retriever = FieldComplexRetriever(field_retrievers)
+retriever = QueryRouter(field_retrievers)
 
 # 1. Traditional retrieval with specific field
 results = retriever.retrieve("content", text_query, k=10)
