@@ -117,7 +117,7 @@ class TestConfig:
             # Title field configs (sparse + dense)
             "title_sparse": FieldConfig(
                 name="title_sparse",
-                tokenizer_type=TokenizerType.SPLIT,
+                tokenizer_type=TokenizerType.MORPH,
                 representation_type=RepresentationType.SPARSE
             ),
             "title_dense": FieldConfig(
@@ -131,7 +131,7 @@ class TestConfig:
             # Content field configs (sparse + dense)
             "content_sparse": FieldConfig(
                 name="content_sparse",
-                tokenizer_type=TokenizerType.SPLIT,
+                tokenizer_type=TokenizerType.MORPH,
                 representation_type=RepresentationType.SPARSE
             ),
             "content_dense": FieldConfig(
@@ -145,7 +145,7 @@ class TestConfig:
             # Review text field configs (sparse + dense)
             "review_text_sparse": FieldConfig(
                 name="review_text_sparse",
-                tokenizer_type=TokenizerType.SPLIT,
+                tokenizer_type=TokenizerType.MORPH,
                 representation_type=RepresentationType.SPARSE
             ),
             "review_text_dense": FieldConfig(
