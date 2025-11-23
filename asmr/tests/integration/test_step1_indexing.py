@@ -115,7 +115,7 @@ class TestFieldIndexing(unittest.TestCase):
             # Title field configs
             "title_sparse":
             FieldConfig(name="title_sparse",
-                        tokenizer_type=TokenizerType.SPLIT,
+                        tokenizer_type=TokenizerType.MORPH,
                         representation_type=RepresentationType.SPARSE),
             "title_dense":
             FieldConfig(name="title_dense",
@@ -128,7 +128,7 @@ class TestFieldIndexing(unittest.TestCase):
             # Content field configs
             "content_sparse":
             FieldConfig(name="content_sparse",
-                        tokenizer_type=TokenizerType.SPLIT,
+                        tokenizer_type=TokenizerType.MORPH,
                         representation_type=RepresentationType.SPARSE),
             "content_dense":
             FieldConfig(name="content_dense",
@@ -141,7 +141,7 @@ class TestFieldIndexing(unittest.TestCase):
             # Review text field configs
             "review_text_sparse":
             FieldConfig(name="review_text_sparse",
-                        tokenizer_type=TokenizerType.SPLIT,
+                        tokenizer_type=TokenizerType.MORPH,
                         representation_type=RepresentationType.SPARSE),
             "review_text_dense":
             FieldConfig(name="review_text_dense",
@@ -282,7 +282,7 @@ class TestFieldIndexing(unittest.TestCase):
             config = self.field_configs[config_name]
             self.assertEqual(config.representation_type,
                              RepresentationType.SPARSE)
-            self.assertEqual(config.tokenizer_type, TokenizerType.SPLIT)
+            self.assertEqual(config.tokenizer_type, TokenizerType.MORPH)
 
         # Test dense configs
         dense_configs = [

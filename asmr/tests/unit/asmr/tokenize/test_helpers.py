@@ -296,6 +296,7 @@ class TestMorphTokenizerWrapper:
     def test_tokenize_basic(self):
         """Test basic tokenization functionality"""
         try:
+            from asmr.tokenize.helpers import MorphTokenizerWrapper
             wrapper = MorphTokenizerWrapper()
             text = "아버지가방에들어가신다"
             result = wrapper.tokenize(text)
@@ -384,6 +385,25 @@ class TestMorphTokenizerWrapper:
             assert isinstance(result, list)
             assert len(result) > 0
             assert all(isinstance(token, str) for token in result)
+
+        except ImportError:
+            pytest.skip("kiwipiepy not available")
+
+    def test_tokenize_english(self):
+        """Test basic tokenization functionality"""
+        try:
+            wrapper = MorphTokenizerWrapper()
+            text = "Hello World Test."
+            result = wrapper.tokenize(text)
+
+            # Should return list of strings (token forms)
+            assert isinstance(result, list)
+            assert all(isinstance(token, str) for token in result)
+            assert len(result) > 0
+
+            # For this specific example, we expect certain tokens
+            expected_forms = ['hello', 'world', 'test']
+            assert result == expected_forms
 
         except ImportError:
             pytest.skip("kiwipiepy not available")
