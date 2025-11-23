@@ -2,10 +2,9 @@ import io
 from typing import Any, Union
 from PIL import Image
 from transformers import AutoTokenizer
-try:
-    from kiwipiepy import Kiwi
-except ImportError:
-    Kiwi = None
+from kiwipiepy import Kiwi
+
+from asmr.tunip import preprocess
 
 
 def split_text(text: str, max_length: int) -> list[str]:
@@ -60,6 +59,12 @@ class TokenizerWrapper:
         return cls(auto_tokenizer)
 
     @classmethod
+    def from_morph_tokenizer(cls) -> 'TokenizerWrapper':
+        """Create TokenizerWrapper from morphological tokenizer"""
+        morph_tokenizer = MorphTokenizerWrapper()
+        return cls(morph_tokenizer)
+
+    @classmethod
     def from_split_tokenizer(cls) -> 'TokenizerWrapper':
         """Create TokenizerWrapper from SplitTokenizer"""
         split_tokenizer = SplitTokenizer()
@@ -85,8 +90,9 @@ class MorphTokenizerWrapper:
         Returns:
             List of token forms (surface forms)
         """
+        text = preprocess.preprocess_korean(text, strict=False)
         tokens = self.kiwi.tokenize(text)
-        return [token.form for token in tokens]
+        return [token.form.lower() for token in tokens]
 
     def tokenize_with_tags(self, text: str) -> list[dict]:
         """Tokenize text and return detailed token information

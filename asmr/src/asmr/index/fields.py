@@ -46,7 +46,9 @@ class SparseFieldIndex(BaseFieldIndex):
     
     def _setup_tokenizer(self):
         """Setup tokenizer based on config"""
-        if self.config.tokenizer_type == TokenizerType.SPLIT:
+        if self.config.tokenizer_type == TokenizerType.MORPH:
+            self.tokenizer = helpers.TokenizerWrapper.from_morph_tokenizer()
+        elif self.config.tokenizer_type == TokenizerType.SPLIT:
             self.tokenizer = helpers.TokenizerWrapper.from_split_tokenizer()
         elif self.config.tokenizer_type == TokenizerType.HF_AUTO:
             self.tokenizer = helpers.TokenizerWrapper.from_auto_tokenizer(self.config.model_path)
