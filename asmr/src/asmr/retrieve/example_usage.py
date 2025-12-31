@@ -4,7 +4,6 @@ Example usage of the updated Query class with data types and multimodal support
 
 from asmr.retrieve.query import Query, QueryContent
 from asmr.index.config import FieldConfig, TokenizerType, RepresentationType
-from PIL import Image
 
 # Example 1: Text-only query with data type
 text_query = Query.from_text("machine learning algorithms", data_type="text")
@@ -37,22 +36,22 @@ field_configs = {
     "title": FieldConfig(
         name="title",
         tokenizer_type=TokenizerType.SPLIT,
-        representation_type=RepresentationType.SPARSE
+        representation_type=RepresentationType.SPARSE,
     ),
     "content": FieldConfig(
-        name="content", 
+        name="content",
         tokenizer_type=TokenizerType.HF_AUTO,
         representation_type=RepresentationType.DENSE,
         model_path="bert-base-uncased",
-        faiss_index_path="/path/to/content.index"
+        faiss_index_path="/path/to/content.index",
     ),
     "image_field": FieldConfig(
         name="image_field",
         tokenizer_type=TokenizerType.HF_AUTO,
         representation_type=RepresentationType.DENSE,
         model_path="clip-model",
-        faiss_index_path="/path/to/image.index"
-    )
+        faiss_index_path="/path/to/image.index",
+    ),
 }
 
 # Get target fields for text query

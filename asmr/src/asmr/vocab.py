@@ -1,5 +1,6 @@
 import marisa_trie
 
+
 class Vocabulary:
     def __init__(self, trie: marisa_trie.Trie):
         self.trie = trie
@@ -15,7 +16,7 @@ class Vocabulary:
 
     def token(self, id: int) -> str:
         return self.trie.restore_key(id)  # type: ignore[no-any-return]
-    
+
     @property
     def n_vocab(self) -> int:
         return len(self.trie)

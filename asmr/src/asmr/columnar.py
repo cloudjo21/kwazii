@@ -8,7 +8,12 @@ from asmr.tokenize import helpers
 
 
 class ColumnarTextStream(Iterable):
-    def __init__(self, texts: Iterable[str], token2id: marisa_trie.Trie, tokenizer: helpers.TokenizerWrapper):
+    def __init__(
+        self,
+        texts: Iterable[str],
+        token2id: marisa_trie.Trie,
+        tokenizer: helpers.TokenizerWrapper,
+    ):
         self.texts = texts
         self.token2id = token2id
         self.tokenizer = tokenizer
@@ -16,7 +21,10 @@ class ColumnarTextStream(Iterable):
     def __iter__(self):
         for text in self.texts:
             tokens = self.tokenizer.tokenize(text)
-            token_ids = np.array([self.token2id[token] for token in tokens if token in self.token2id], dtype=np.int32)
+            token_ids = np.array(
+                [self.token2id[token] for token in tokens if token in self.token2id],
+                dtype=np.int32,
+            )
             yield token_ids
 
 
@@ -36,11 +44,14 @@ class ColumnarStatistics(pydantic.BaseModel):
 
     n_docs: int
     df: np.ndarray = pydantic.Field(
-        default_factory=lambda: np.array([], dtype=np.int32))
+        default_factory=lambda: np.array([], dtype=np.int32)
+    )
     doc_len: np.ndarray = pydantic.Field(
-        default_factory=lambda: np.array([], dtype=np.int32))
+        default_factory=lambda: np.array([], dtype=np.int32)
+    )
     idf: np.ndarray = pydantic.Field(
-        default_factory=lambda: np.array([], dtype=np.float32))
+        default_factory=lambda: np.array([], dtype=np.float32)
+    )
     nnz_total: int = 0
     avg_doc_len: float = pydantic.Field(default=0.0)
 
@@ -49,9 +60,10 @@ class ColumnarStatistics(pydantic.BaseModel):
 
 
 class ColumnarStatisticsBuilder:
-
     @classmethod
-    def build(cls, field_columnar_texts: FieldBasedColumnarTexts, vocab: vocab.Vocabulary) -> ColumnarStatistics:
+    def build(
+        cls, field_columnar_texts: FieldBasedColumnarTexts, vocab: vocab.Vocabulary
+    ) -> ColumnarStatistics:
         if not vocab or not vocab.trie:
             raise ValueError("Vocabulary is not provided or invalid.")
 
@@ -63,7 +75,7 @@ class ColumnarStatisticsBuilder:
         text_stream = ColumnarTextStream(
             field_columnar_texts,
             vocab.trie,
-            helpers.TokenizerWrapper(helpers.SplitTokenizer())
+            helpers.TokenizerWrapper(helpers.SplitTokenizer()),
         )
 
         for d, terms in enumerate(text_stream):
@@ -72,7 +84,7 @@ class ColumnarStatisticsBuilder:
             df[uniq] += 1
             nnz_total += uniq.size
 
-            if d > n_docs-1:
+            if d > n_docs - 1:
                 break
 
         idf = np.log((n_docs - df + 0.5) / (df + 0.5))
@@ -86,5 +98,5 @@ class ColumnarStatisticsBuilder:
             doc_len=doc_len,
             idf=idf,
             nnz_total=nnz_total,
-            avg_doc_len=avg_doc_len
+            avg_doc_len=avg_doc_len,
         )

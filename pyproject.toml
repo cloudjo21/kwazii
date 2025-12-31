@@ -28,6 +28,7 @@ dependencies = [
     "pydantic>=2.12.3",
     "pytest>=9.0.1",
     "requests",
+    "ruff>=0.14.10",
     "scipy>=1.16.1",
     "torch==2.6.0",
     "torchvision>=0.21.0",
