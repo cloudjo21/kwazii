@@ -3,6 +3,7 @@ Integration test for ASMR field indexing and retrieval system
 Step 1: Define fields and indexing pipeline
 """
 
+import logging
 import os
 import tempfile
 import shutil
@@ -29,35 +30,16 @@ except ImportError:
     Image = MockImage()
     import numpy as np
 
+from asmr import columnar
+from asmr import vocab
+from asmr.index import bm25
 from asmr.index.config import FieldConfig, TokenizerType, RepresentationType
 from asmr.index.fields import (SparseTextFieldIndex, DenseTextFieldIndex,
                                DenseImageFieldIndex, DocumentIndex)
+from asmr.tokenize.helpers import MorphTokenizerWrapper, TokenizerWrapper
 
 
-class MockBM25Index:
-    """Mock BM25 index for testing"""
-
-    def __init__(self):
-        self.documents = []
-        self.shape = (0, )
-
-    def add_documents(self, documents):
-        self.documents.extend(documents)
-        self.shape = (len(self.documents), )
-
-    def get_score(self, doc_id, terms):
-        # Mock score calculation
-        class MockTermScore:
-
-            def __init__(self, score):
-                self.score = score
-
-        class MockDocScore:
-
-            def __init__(self, scores):
-                self.term_scores = [MockTermScore(s) for s in scores]
-
-        return MockDocScore([0.5] * len(terms))
+logger = logging.getLogger(__name__)
 
 
 class MockEncoder:
@@ -77,6 +59,39 @@ class MockEncoder:
         embeddings = np.random.rand(len(images),
                                     self.dimension).astype(np.float32)
         return embeddings
+
+
+class MockBM25Index:
+    """Mock BM25 index for testing"""
+
+    def __init__(self):
+        self.documents = []
+        self.shape = (0, )
+
+    def add_documents(self, documents):
+        self.documents.extend(documents)
+        self.shape = (len(self.documents), )
+
+    def get_score(self, doc_id, terms):
+        # Mock score calculation
+        class MockTermScore:
+
+            def __init__(self, term, score):
+                self.term = term
+                self.score = score
+
+        class MockDocScore:
+
+            def __init__(self, field_name, doc_id, scores):
+                self.field_name = field_name
+                self.doc_id = doc_id
+                self.term_scores = [
+                    MockTermScore(term, score) for term, score in scores
+                ]
+
+        # Return mock scores
+        mock_scores = [(term, 0.5) for term in terms]
+        return MockDocScore("mock_field", doc_id, mock_scores)
 
 
 class TestFieldIndexing(unittest.TestCase):
@@ -248,14 +263,14 @@ class TestFieldIndexing(unittest.TestCase):
 
     def _initialize_field_indices(self):
         """Initialize field indices based on configurations"""
-        # Initialize sparse text indices
+        # Initialize sparse text indices with placeholder
+        # We'll build actual BM25Index during indexing with real data
         for field_name in [
                 "title_sparse", "content_sparse", "review_text_sparse"
         ]:
             config = self.field_configs[field_name]
-            bm25_index = MockBM25Index()
-            self.field_indices[field_name] = SparseTextFieldIndex(
-                config, bm25_index)
+            # Set to None initially, will be built during indexing
+            self.field_indices[field_name] = SparseTextFieldIndex(config, None)
 
         # Initialize dense text indices
         for field_name in [
@@ -269,6 +284,44 @@ class TestFieldIndexing(unittest.TestCase):
         config = self.field_configs["review_image"]
         self.field_indices["review_image"] = DenseImageFieldIndex(
             config, self.encoder)
+
+    def _build_bm25_index_for_field(self, field_name: str,
+                                    texts: list[str]) -> bm25.BM25Index:
+        """Build BM25Index for a specific field with actual text data"""
+
+        # Create tokenizer based on field config
+        config = self.field_configs[field_name]
+        if config.tokenizer_type == TokenizerType.MORPH:
+            tokenizer = TokenizerWrapper(MorphTokenizerWrapper())
+        else:
+            raise ValueError("Unsupported tokenizer type for BM25 indexing")
+
+        # Collect all tokens from texts to build vocabulary
+        all_tokens = set()
+        for text in texts:
+            tokens = tokenizer.tokenize(text)
+            all_tokens.update(tokens)
+
+        # Create vocabulary
+        vocabulary = vocab.Vocabulary.from_token_set(all_tokens)
+
+        # Create field-based columnar texts
+        field_columnar_texts = columnar.FieldBasedColumnarTexts(
+            [{
+                field_name: text
+            } for text in texts], field_name, len(texts))
+
+        # Build statistics
+        field_stats = columnar.ColumnarStatisticsBuilder.build(
+            field_columnar_texts, vocabulary)
+
+        # Build BM25 index
+        bm25_index = bm25.BM25Indexer.build(field_name=field_name,
+                                            columnar_posting=texts,
+                                            vocab=vocabulary,
+                                            field_statistics=field_stats)
+
+        return bm25_index
 
     def test_field_config_creation(self):
         """Test that all field configurations are properly created"""
@@ -315,12 +368,23 @@ class TestFieldIndexing(unittest.TestCase):
         review_texts = [doc["review_text"] for doc in self.sample_documents]
         review_images = [doc["review_image"] for doc in self.sample_documents]
 
-        # Test sparse text indexing
-        print("\\nIndexing sparse text fields...")
-        self.field_indices["title_sparse"].add_documents(doc_ids, titles)
-        self.field_indices["content_sparse"].add_documents(doc_ids, contents)
-        self.field_indices["review_text_sparse"].add_documents(
-            doc_ids, review_texts)
+        # Test sparse text indexing - build actual BM25Index
+        print("\nIndexing sparse text fields...")
+
+        # Build actual BM25 indices for sparse text fields
+        title_bm25_index = self._build_bm25_index_for_field(
+            "title_sparse", titles)
+        content_bm25_index = self._build_bm25_index_for_field(
+            "content_sparse", contents)
+        review_text_bm25_index = self._build_bm25_index_for_field(
+            "review_text_sparse", review_texts)
+
+        # Update field indices with actual BM25Index
+        self.field_indices["title_sparse"].index = title_bm25_index
+        self.field_indices["content_sparse"].index = content_bm25_index
+        self.field_indices["review_text_sparse"].index = review_text_bm25_index
+
+        print("✓ Real BM25 indices built for sparse text fields")
 
         # Test dense text indexing
         print("Indexing dense text fields...")
