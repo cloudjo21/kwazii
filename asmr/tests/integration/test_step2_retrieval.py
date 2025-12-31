@@ -177,13 +177,14 @@ class TestQueryRetrieval(unittest.TestCase):
 
         for field_name in sparse_fields:
             retriever = self.retrievers[field_name]
-            field_results: FieldBasedRanking = retriever.retrieve(query, k=_TOP_K)
+            field_results: FieldBasedRanking = retriever.retrieve(query,
+                                                                  k=_TOP_K)
             print(f"#### FIELD RANKING: {field_results}")
             results[field_name] = field_results
 
             # Use helper function for processing results with logging
-            doc_scores: dict[str, float] = log_field_results(field_name, field_results,
-                                           self.sample_documents, _TOP_K)
+            doc_scores: dict[str, float] = log_field_results(
+                field_name, field_results, self.sample_documents, _TOP_K)
             field_document_scores[field_name] = doc_scores
 
         # Aggregate scores and report top documents using consolidated helper function
@@ -224,8 +225,8 @@ class TestQueryRetrieval(unittest.TestCase):
             results[field_name] = field_results
 
             # Use helper function for processing results with logging
-            doc_scores: dict[str, float] = log_field_results(field_name, field_results,
-                                           self.sample_documents, _TOP_K)
+            doc_scores: dict[str, float] = log_field_results(
+                field_name, field_results, self.sample_documents, _TOP_K)
             field_document_scores[field_name] = doc_scores
 
         # Test dense image field with text query (cross-modal)
@@ -243,9 +244,9 @@ class TestQueryRetrieval(unittest.TestCase):
         results["review_image_image_query"] = image_to_image_results
 
         # Use helper function for image results
-        image_doc_scores: dict[str, float] = log_field_results("review_image",
-                                             image_to_image_results,
-                                             self.sample_documents, _TOP_K)
+        image_doc_scores: dict[str, float] = log_field_results(
+            "review_image", image_to_image_results, self.sample_documents,
+            _TOP_K)
         field_document_scores["review_image"] = image_doc_scores
 
         # Aggregate scores and report top documents for dense fields
@@ -326,7 +327,8 @@ class TestQueryRetrieval(unittest.TestCase):
         for field_name, retriever in self.retrievers.items():
             all_fields.append(field_name)
             try:
-                field_results: FieldBasedRanking = retriever.retrieve(query, k=_TOP_K)
+                field_results: FieldBasedRanking = retriever.retrieve(query,
+                                                                      k=_TOP_K)
                 all_results[field_name] = field_results
                 logger.info(f"{field_name}: {len(field_results)} results")
                 if field_results:
@@ -335,8 +337,8 @@ class TestQueryRetrieval(unittest.TestCase):
                     )
 
                 # Use helper function for processing results with logging
-                doc_scores: dict[str, float] = log_field_results(field_name, field_results,
-                                            self.sample_documents, _TOP_K)
+                doc_scores: dict[str, float] = log_field_results(
+                    field_name, field_results, self.sample_documents, _TOP_K)
                 field_document_scores[field_name] = doc_scores
             except Exception as e:
                 logger.info(f"{field_name}: Error - {e}")
@@ -370,7 +372,7 @@ class TestQueryRetrieval(unittest.TestCase):
         # Test basic retrieval
         query = self.sample_queries[0]
         results = complex_retriever.retrieve("title_sparse", query, k=_TOP_K)
-        self.assertIsInstance(results, list)
+        self.assertIsInstance(results, FieldBasedRanking)
         logger.info(f"QueryRouter basic retrieval: {len(results)} results")
 
         # Test multi-field retrieval
@@ -388,10 +390,11 @@ class TestQueryRetrieval(unittest.TestCase):
         smart_results = complex_retriever.retrieve_with_field_configs(
             query, self.field_configs, k=3)
         self.assertIsInstance(smart_results, dict)
-        logger.info(f"Smart retrieval found {len(smart_results)} compatible fields")
+        logger.info(
+            f"Smart retrieval found {len(smart_results)} compatible fields")
 
         logger.info("✓ QueryRouter integration successful")
-        return multi_results, smart_results
+        return multi_results, results
 
     def test_document_retriever_integration(self):
         # TODO
@@ -495,7 +498,8 @@ class TestQueryRetrieval(unittest.TestCase):
         logger.info(
             f"✓ Processed {total_queries} queries across {total_fields} fields"
         )
-        logger.info(f"✓ Sparse text retrieval: {len(sparse_results)} fields tested")
+        logger.info(
+            f"✓ Sparse text retrieval: {len(sparse_results)} fields tested")
         logger.info(
             f"✓ Dense image retrieval: {len(dense_image_results)} fields tested"
         )
@@ -503,7 +507,8 @@ class TestQueryRetrieval(unittest.TestCase):
         logger.info(
             f"✓ Comprehensive retrieval: {len(comprehensive_results)} fields tested"
         )
-        logger.info(f"✓ Complex retriever: Multi-field and smart retrieval working")
+        logger.info(
+            f"✓ Complex retriever: Multi-field and smart retrieval working")
         logger.info(f"✓ Document retriever: All interfaces available")
         logger.info("✓ End-to-end pipeline successful!")
 

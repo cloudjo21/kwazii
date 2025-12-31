@@ -64,11 +64,20 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = [
     "-v",
+    "-s",
+    "--log-cli-level=INFO",
+    "--log-cli-format=%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "--log-cli-date-format=%Y-%m-%d %H:%M:%S",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
 ]
+log_level = "INFO"
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 
