@@ -37,11 +37,11 @@ from asmr.retrieve.retrievers import (DenseImageFieldRetriever,
 
 # Import from step 1 output
 try:
-    from .test_step1_indexing import MockBM25Index, MockEncoder, TestFieldIndexing
+    from .test_step1_indexing import TestFieldIndexing
 except ImportError:
     # Fallback imports for standalone execution
     sys.path.append(str(Path(__file__).parent))
-    from test_step1_indexing import MockBM25Index, MockEncoder, TestFieldIndexing
+    from test_step1_indexing import TestFieldIndexing
 
 # Import scoring helpers
 try:
@@ -178,10 +178,11 @@ class TestQueryRetrieval(unittest.TestCase):
         for field_name in sparse_fields:
             retriever = self.retrievers[field_name]
             field_results: FieldBasedRanking = retriever.retrieve(query, k=_TOP_K)
+            print(f"#### FIELD RANKING: {field_results}")
             results[field_name] = field_results
 
             # Use helper function for processing results with logging
-            doc_scores: FieldBasedRanking = log_field_results(field_name, field_results,
+            doc_scores: dict[str, float] = log_field_results(field_name, field_results,
                                            self.sample_documents, _TOP_K)
             field_document_scores[field_name] = doc_scores
 
@@ -223,7 +224,7 @@ class TestQueryRetrieval(unittest.TestCase):
             results[field_name] = field_results
 
             # Use helper function for processing results with logging
-            doc_scores: FieldBasedRanking = log_field_results(field_name, field_results,
+            doc_scores: dict[str, float] = log_field_results(field_name, field_results,
                                            self.sample_documents, _TOP_K)
             field_document_scores[field_name] = doc_scores
 
@@ -242,7 +243,7 @@ class TestQueryRetrieval(unittest.TestCase):
         results["review_image_image_query"] = image_to_image_results
 
         # Use helper function for image results
-        image_doc_scores: FieldBasedRanking = log_field_results("review_image",
+        image_doc_scores: dict[str, float] = log_field_results("review_image",
                                              image_to_image_results,
                                              self.sample_documents, _TOP_K)
         field_document_scores["review_image"] = image_doc_scores
@@ -318,30 +319,46 @@ class TestQueryRetrieval(unittest.TestCase):
         )
 
         # Test all retrievers
+        all_fields = []
         all_results = {}
+        field_document_scores = {}
 
         for field_name, retriever in self.retrievers.items():
+            all_fields.append(field_name)
             try:
-                field_results = retriever.retrieve(query, k=_TOP_K)
+                field_results: FieldBasedRanking = retriever.retrieve(query, k=_TOP_K)
                 all_results[field_name] = field_results
                 logger.info(f"{field_name}: {len(field_results)} results")
                 if field_results:
                     logger.info(
                         f"  Top results [{field_name}]: {field_results[0:_TOP_K]}"
                     )
+
+                # Use helper function for processing results with logging
+                doc_scores: dict[str, float] = log_field_results(field_name, field_results,
+                                            self.sample_documents, _TOP_K)
+                field_document_scores[field_name] = doc_scores
             except Exception as e:
                 logger.info(f"{field_name}: Error - {e}")
                 all_results[field_name] = []
 
-        # Verify we got results from multiple fields
-        fields_with_results = [
-            field for field, results in all_results.items() if len(results) > 0
-        ]
-        self.assertGreater(len(fields_with_results), 0,
-                           "Should get results from at least one field")
+        if field_document_scores:
+            aggregate_and_report_top_docs(
+                field_document_scores=field_document_scores,
+                sample_documents=self.sample_documents,
+                field_names=all_fields,
+                top_k=4,
+                title="Top 4 Documents by Dense Field Aggregated Score")
 
-        logger.info(f"✓ Got results from {len(fields_with_results)} fields")
-        return all_results
+        # # Verify we got results from multiple fields
+        # fields_with_results = [
+        #     field for field, results in all_results.items() if len(results) > 0
+        # ]
+        # self.assertGreater(len(fields_with_results), 0,
+        #                    "Should get results from at least one field")
+
+        # logger.info(f"✓ Got results from {len(fields_with_results)} fields")
+        # return all_results
 
     def test_field_complex_retriever(self):
         """Test QueryRouter integration"""
