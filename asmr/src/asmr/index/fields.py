@@ -177,13 +177,7 @@ class SparseTextFieldIndex(SparseFieldIndex):
 
     def _get_doc_id(self, doc_pos: int) -> str:
         """Convert integer doc_id to string doc_id using mapping"""
-        if self.doc_id_mapping is None:
-            return str(doc_pos)
-
-        try:
-            return self.doc_id_mapping.get_doc_id(doc_pos)
-        except KeyError:
-            return str(doc_pos)  # fallback
+        return self.doc_id_mapping.get_doc_id(doc_pos)
 
 
 class DenseTextFieldIndex(DenseFieldIndex):

@@ -47,14 +47,15 @@ class DocumentIndexToIdMapping:
         self.mapping = mapping
         self.posting_policy = posting_policy
 
-    def get_doc_id(self, doc_index: int) -> str:
-        key = str(doc_index)
-        if key in self.mapping:
-            full_mapping = self.mapping[key]
-            _, str_id = full_mapping.split(":", 1)
-            return str_id
+    def get_doc_id(self, doc_pos: int) -> str:
+        """Get string doc_id for given integer doc_pos"""
+        key = str(doc_pos)
+        value = self.mapping.get(key)
+        if value is not None:
+            # access the first value of bytes-trie value tuple, bytes-tuple allow multiple values per key
+            return value[0].decode("utf-8")
         else:
-            raise KeyError(f"DOC_INDEX {doc_index} not found in mapping.")
+            raise KeyError(f"DOC_POSITION {doc_pos} not found in mapping.")
 
     @classmethod
     def build(
@@ -191,9 +192,8 @@ class BM25Indexer:
         doc_id_mapping = None
         if doc_ids is not None:
             # Create mapping using DocumentIndexToIdMapping without converting to list
-            doc_id_pairs = enumerate(doc_ids)
             doc_id_mapping = DocumentIndexToIdMapping.build(
-                doc_id_pairs, DocIdPostingPolicy.UNIQUE
+                enumerate(doc_ids), DocIdPostingPolicy.UNIQUE
             )
 
             # Note: We can't validate the length beforehand without converting to list

@@ -3,7 +3,7 @@ Scoring helpers for integration tests
 """
 
 import logging
-from typing import Dict, List, Tuple, Any, Union
+from typing import Any, Union
 
 from asmr.index.models import FieldBasedRanking
 
@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 def collect_field_scores(
-    field_results: Union[List[Tuple[int, float]], FieldBasedRanking]
-) -> Dict[int, float]:
+    field_results: Union[list[tuple[int, float]], FieldBasedRanking]
+) -> dict[int, float]:
     """
     Extract document scores from field retrieval results.
     
@@ -33,12 +33,12 @@ def collect_field_scores(
 
 
 def aggregate_and_report_top_docs(
-    field_document_scores: Dict[str, FieldBasedRanking],
-    sample_documents: List[Dict[str, Any]],
-    field_names: List[str],
+    field_document_scores: dict[str, dict[str, float]],
+    sample_documents: list[dict[str, Any]],
+    field_names: list[str],
     top_k: int = 4,
     title: str = "Top Documents by Aggregated Score"
-) -> List[Tuple[str, float]]:
+) -> list[tuple[str, float]]:
     """
     Aggregate scores across fields and report top documents with breakdown.
     
@@ -100,8 +100,8 @@ def aggregate_and_report_top_docs(
 
 def log_field_results(field_name: str,
                       field_results: FieldBasedRanking,
-                      sample_documents: List[Dict[str, Any]],
-                      top_k: int = 5) -> Dict[int, float]:
+                      sample_documents: list[dict[str, Any]],
+                      top_k: int = 5) -> dict[str, float]:
     """
     Log field retrieval results with document titles and collect scores.
     

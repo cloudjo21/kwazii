@@ -319,7 +319,7 @@ class TestFieldIndexing(unittest.TestCase):
         bm25_index = bm25.BM25Indexer.build(field_name=field_name,
                                             columnar_posting=texts,
                                             vocab=vocabulary,
-                                            field_statistics=field_stats)
+                                            field_statistics=field_stats, doc_ids=doc_ids)
 
         return bm25_index
 
@@ -372,17 +372,21 @@ class TestFieldIndexing(unittest.TestCase):
         print("\nIndexing sparse text fields...")
 
         # Build actual BM25 indices for sparse text fields
-        title_bm25_index = self._build_bm25_index_for_field(
-            "title_sparse", titles)
-        content_bm25_index = self._build_bm25_index_for_field(
-            "content_sparse", contents)
-        review_text_bm25_index = self._build_bm25_index_for_field(
-            "review_text_sparse", review_texts)
+        # title_bm25_index = self._build_bm25_index_for_field(
+        #     "title_sparse", titles)
+        # content_bm25_index = self._build_bm25_index_for_field(
+        #     "content_sparse", contents)
+        # review_text_bm25_index = self._build_bm25_index_for_field(
+        #     "review_text_sparse", review_texts)
 
         # Update field indices with actual BM25Index
-        self.field_indices["title_sparse"].index = title_bm25_index
-        self.field_indices["content_sparse"].index = content_bm25_index
-        self.field_indices["review_text_sparse"].index = review_text_bm25_index
+        # self.field_indices["title_sparse"].index = title_bm25_index
+        # self.field_indices["content_sparse"].index = content_bm25_index
+        # self.field_indices["review_text_sparse"].index = review_text_bm25_index
+
+        self.field_indices["title_sparse"].add_documents(doc_ids, titles)
+        self.field_indices["content_sparse"].add_documents(doc_ids, contents)
+        self.field_indices["review_text_sparse"].add_documents(doc_ids, review_texts)
 
         print("✓ Real BM25 indices built for sparse text fields")
 
