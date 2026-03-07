@@ -16,7 +16,7 @@ from asmr import vocab
 from fde import base
 from fde.config import PromptType
 
-logger = logging.get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class BaseFieldIndex(abc.ABC):
