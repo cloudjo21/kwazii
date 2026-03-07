@@ -1,20 +1,22 @@
 import abc
 import numpy as np
+import logging
 from typing import List, Optional, Union
 from PIL import Image
 
 from asmr.index import bm25
 from asmr.index.bm25 import DocumentIndexToIdMapping
-from asmr.index.config import FieldConfig, TokenizerType, RepresentationType
+from asmr.index.config import FieldConfig, RepresentationType
 from asmr.index.models import FieldBasedRanking, FieldBasedRankingItem
 from asmr.index.image_encoder import ImageEncodingIndexer
 from asmr.index.text_encoder import TextEncodingIndexer
-from asmr.tokenize import helpers
-from asmr.tokenize.helpers import MorphTokenizerWrapper, TokenizerWrapper
+from asmr.tokenize.helpers import TokenizerWrapper
 from asmr import columnar
 from asmr import vocab
 from fde import base
 from fde.config import PromptType
+
+logger = logging.get_logger(__name__)
 
 
 class BaseFieldIndex(abc.ABC):
@@ -52,20 +54,11 @@ class SparseFieldIndex(BaseFieldIndex):
             raise ValueError(
                 "SparseFieldIndex requires SPARSE representation_type")
         super().__init__(config)
-        self._setup_tokenizer()
+        self._set_tokenizer()
 
-    def _setup_tokenizer(self):
+    def _set_tokenizer(self):
         """Setup tokenizer based on config"""
-        if self.config.tokenizer_type == TokenizerType.MORPH:
-            self.tokenizer = helpers.TokenizerWrapper.from_morph_tokenizer()
-        elif self.config.tokenizer_type == TokenizerType.SPLIT:
-            self.tokenizer = helpers.TokenizerWrapper.from_split_tokenizer()
-        elif self.config.tokenizer_type == TokenizerType.HF_AUTO:
-            self.tokenizer = helpers.TokenizerWrapper.from_auto_tokenizer(
-                self.config.model_path)
-        else:
-            raise ValueError(
-                f"Unsupported tokenizer type: {self.config.tokenizer_type}")
+        self.tokenizer = TokenizerWrapper.from_config(self.config)
 
 
 class DenseFieldIndex(BaseFieldIndex):
@@ -105,10 +98,7 @@ class SparseTextFieldIndex(SparseFieldIndex):
             raise ValueError("Number of doc_ids must match number of contents")
 
         # Create tokenizer based on field config
-        if self.config.tokenizer_type == TokenizerType.MORPH:
-            tokenizer = TokenizerWrapper(MorphTokenizerWrapper())
-        else:
-            raise ValueError("Unsupported tokenizer type for BM25 indexing")
+        tokenizer = TokenizerWrapper.from_config(self.config)
 
         # Collect all tokens from contents to build vocabulary
         all_tokens = set()
@@ -129,11 +119,11 @@ class SparseTextFieldIndex(SparseFieldIndex):
         )
 
         # Build statistics
-        field_stats = columnar.ColumnarStatisticsBuilder.build(
+        field_stats: columnar.ColumnarStatistics = columnar.ColumnarStatisticsBuilder.build(
             field_columnar_texts, vocabulary)
 
         # Build BM25 index with doc_ids for mapping
-        self.index = bm25.BM25Indexer.build(
+        self.index: bm25.BM25Index = bm25.BM25Indexer.build(
             field_name=self.field_name,
             columnar_posting=contents,
             vocab=vocabulary,
@@ -147,14 +137,13 @@ class SparseTextFieldIndex(SparseFieldIndex):
     def search(self, query: str, k: int = 10) -> FieldBasedRanking:
         """Search using BM25 scoring"""
         terms = self.tokenizer.tokenize(query)
-        scores = []
-        print("#### Searching BM25 index...")
-        print(f"#### index shape: {self.index.index.shape}")
+        scores: list[tuple[str, float]] = []
+        logger.debug(f"Searching BM25 index shaped as {self.index.index.shape}")
         # TODO: search top-k ranking with terms, and have to return document_id of FieldIndex typed str in ranking
         for doc_pos in range(self.index.index.shape[0]):
             doc_score = self.index.get_score(doc_pos, terms)
-            print(
-                f"#### Doc Position: {doc_pos}, Term Scores: {[(ts.term, ts.score) for ts in doc_score.term_scores]}"
+            logger.debug(
+                f"Doc Position: {doc_pos}, Term Scores: {[(ts.term, ts.score) for ts in doc_score.term_scores]}"
             )
             total_score = sum(ts.score for ts in doc_score.term_scores)
             if total_score > 0:
