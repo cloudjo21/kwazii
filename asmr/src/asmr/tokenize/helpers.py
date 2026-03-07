@@ -5,6 +5,7 @@ from transformers import AutoTokenizer
 from kiwipiepy import Kiwi
 
 from asmr.tunip import preprocess
+from asmr.index import config
 
 
 def split_text(text: str, max_length: int) -> list[str]:
@@ -66,6 +67,30 @@ class TokenizerWrapper:
         """Create TokenizerWrapper from SplitTokenizer"""
         split_tokenizer = SplitTokenizer()
         return cls(split_tokenizer)
+
+    @classmethod
+    def from_config(cls, field_config: config.FieldConfig) -> "TokenizerWrapper":
+        """Create TokenizerWrapper from FieldConfig
+
+        Args:
+            field_config: FieldConfig containing tokenizer_type and model_path
+
+        Returns:
+            TokenizerWrapper instance configured according to field_config
+
+        Raises:
+            ValueError: If tokenizer_type is not supported
+        """
+        if field_config.tokenizer_type == config.TokenizerType.MORPH:
+            return cls.from_morph_tokenizer()
+        elif field_config.tokenizer_type == config.TokenizerType.SPLIT:
+            return cls.from_split_tokenizer()
+        elif field_config.tokenizer_type == config.TokenizerType.HF_AUTO:
+            return cls.from_auto_tokenizer(field_config.model_path)
+        else:
+            raise ValueError(
+                f"Unsupported tokenizer type: {field_config.tokenizer_type}"
+            )
 
 
 class MorphTokenizerWrapper:

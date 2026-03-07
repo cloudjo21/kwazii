@@ -11,11 +11,10 @@ from asmr import columnar
 from asmr import vocab
 from asmr.tokenize import helpers
 
-# _INDEX_DIR = "/path/to/index/dir"
 _INDEX_DIR = "./path/to/index/dir"
 _INDEX_FILE = "indices.bin"
 _DATA_FILE = "data.bin"
-_INDEX_POINTER_FILE = "indptr.bin"
+_INDEX_POINTER_FILE = "indptr.npy"
 _METADATA_FILE = "metadata.json"
 
 
