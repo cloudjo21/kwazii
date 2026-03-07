@@ -1,0 +1,30 @@
+[project]
+name = "asmr"
+version = "0.1.0"
+description = "ASMR"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "kwazii" # 로컬 패키지 참조
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["*"]
+
+[tool.setuptools.package-dir]
+"asmr" = "src"
+
+[tool.uv.sources]
+kwazii = { path = "../", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src"]
+pythonpath = [".", "src"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
