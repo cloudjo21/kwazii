@@ -2,9 +2,9 @@
 
 ## Skill Metadata
 
-**Name**: Python Style Checker  
-**Version**: 1.0.0  
-**Author**: Based on Google Python Style Guide  
+**Name**: Python Style Checker
+**Version**: 1.0.0
+**Author**: Based on Google Python Style Guide
 **Purpose**: Helps AI coding agents write clean, consistent Python code following Google's style guide
 
 ## When to Use This Skill
@@ -28,10 +28,13 @@ Before completing any Python code task, verify:
 
 ### Imports ✓
 - [ ] All imports at top of file
-- [ ] Imports are for modules/packages, not classes (except `typing`, `collections.abc`)
+- [ ] `import` statements only for packages/modules — do not import individual classes, functions, or types
+- [ ] Use `from x import y as z` only when y is too generic, too long, or causes a name collision
+- [ ] Never use relative imports (`from . import`, `from .. import`) — always use full absolute paths
+- [ ] Never use bare module imports without a path (e.g., `import jodie`) — avoid `sys.path` dependence
 - [ ] Import order: `__future__` → stdlib → third-party → local
 - [ ] No wildcard imports (`from x import *`)
-- [ ] Full package paths used
+- [ ] Exception: direct imports from `typing`, `typing_extensions`, and `collections.abc` are allowed
 
 ### Formatting ✓
 - [ ] Line length ≤ 80 characters
@@ -80,6 +83,16 @@ def append_to(item, target=[]):
 # ❌ Wildcard import
 from module import *
 
+# ❌ Relative imports
+from . import sibling
+from .. import parent
+
+# ❌ Bare module import without path (sys.path dependent — unclear which module loads)
+import jodie
+
+# ❌ Direct class/function import (except typing-related)
+from sound.effects.echo import EchoFilter
+
 # ❌ Bare except
 try:
     risky_operation()
@@ -113,8 +126,13 @@ def append_to(item, target=None):
     target.append(item)
     return target
 
-# ✅ Import modules
-from package import module
+# ✅ Import modules using full absolute paths
+from sound.effects import echo
+from myproject.subpackage import sibling
+
+# ✅ Direct imports from typing-related modules are allowed
+from typing import Any, Optional
+from collections.abc import Mapping, Sequence
 
 # ✅ Specific exception handling
 try:
@@ -149,27 +167,27 @@ When writing Python code, the agent should:
 1. **Start with proper file structure:**
    ```python
    """Module docstring goes here.
-   
+
    Detailed description.
    """
-   
+
    from __future__ import annotations
-   
+
    import standard_library
-   
+
    import third_party
-   
+
    from local_package import module
-   
-   
+
+
    class MyClass:
        ...
-   
-   
+
+
    def my_function():
        ...
-   
-   
+
+
    if __name__ == '__main__':
        main()
    ```
@@ -249,30 +267,30 @@ PUBLIC_CONSTANT = 'value'
 
 class MyClass:
     """[One-line class description.]
-    
+
     [Extended description if needed.]
-    
+
     Attributes:
         attr_name: Description of attribute.
     """
-    
+
     def __init__(self, param: str) -> None:
         """Initialize the instance.
-        
+
         Args:
             param: Description of parameter.
         """
         self.attr_name = param
-    
+
     def public_method(self, arg: int) -> str:
         """[One-line method description.]
-        
+
         Args:
             arg: Description of argument.
-            
+
         Returns:
             Description of return value.
-            
+
         Raises:
             ValueError: If arg is negative.
         """
@@ -283,11 +301,11 @@ class MyClass:
 
 def public_function(param: str, option: bool = False) -> dict[str, Any]:
     """[One-line function description.]
-    
+
     Args:
         param: Description of parameter.
         option: Description of optional parameter.
-        
+
     Returns:
         Description of return value.
     """
@@ -332,11 +350,11 @@ def fetch_users(
     include_deleted: bool = False,
 ) -> list[User]:
     """Fetch users by their IDs.
-    
+
     Args:
         ids: Sequence of user IDs to fetch.
         include_deleted: If True, include deleted users.
-        
+
     Returns:
         List of User objects found.
     """
@@ -350,24 +368,24 @@ def fetch_users(
 
 ## Automated Tools
 
-변경된 Python 코드가 있을 때 프로젝트의 venv 환경(uv)으로 아래 순서대로 실행한다:
+When Python code has been changed, run the following commands in order using the project's uv environment:
 
-1. **ruff format** - 코드 포맷팅
+1. **ruff format** - Code formatting
    ```bash
    uv run ruff format
    ```
 
-2. **ruff check** - 린팅 및 자동 수정
+2. **ruff check** - Linting and auto-fix
    ```bash
    uv run ruff check --fix
    ```
 
-3. **mypy** - 타입 체킹
+3. **mypy** - Type checking
    ```bash
    uv run mypy
    ```
 
-오류가 발생하면 수정 후 다시 실행한다.
+If any errors occur, fix them and re-run.
 
 ## Error Messages
 

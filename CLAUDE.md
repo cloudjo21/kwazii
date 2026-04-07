@@ -1,18 +1,18 @@
-# Project Constitution
+# nol-agents Project Constitution
 
 ## Project
 
 - **Main branch**: `main`
 - **Language**: Python (uv 환경)
 
-## Skills & Commands
 
+## Skills & Commands
 
 ### Python 코드 작성/수정 시
 
 → **`python-style-checker`** skill 자동 적용
 - `.py` 파일 생성·수정·리뷰·리팩터링 시 Google Python Style Guide 준수
-- 완료 후 수정한 파일들에 한해서 `uv run ruff format` → `uv run ruff check --fix` → `uv run mypy` 순서로 실행
+- 완료 후 `uv run ruff format` → `uv run ruff check --fix` → `uv run mypy` 순서로 실행
 
 ### 테스트 작성/실행 시
 
@@ -23,11 +23,7 @@
 
 ### Session Handoff
 
-- command 위치: @.claude/commands/handoff.md
-
-다음 상황에서 진행 상황을 정리한다:
-- 세션 종료 전
-- 작업 흐름상 컨텍스트가 무거워졌다고 느껴질 때
-- Claude가 컨텍스트 한계 경고를 보낼 때
-
-Handoff 작업이 끝나면 claude session을 /clear 처리한다.
+- **트리거**: `/context-free-space` 결과 `free space ≤ 20%`일 때 handoff 권장
+  > 예: `context usage free: 19% (used: 81%)` → handoff 권장 구간
+- **절차**: `/handoff` 실행 → 핸드오프 문서 생성 완료 후 → `/clear` 실행
+- Claude는 위 절차를 순서대로 자동 수행할 것
