@@ -1,7 +1,6 @@
 """Low-cost auxiliary features for aggregation (design doc section 5)."""
 
 import torch
-import torch.nn.functional as F
 from torch import Tensor
 
 
@@ -29,10 +28,15 @@ def build_aux_features(
     masked = pooled.clone()
     masked = masked.masked_fill(~field_mask, float("nan"))
 
-    var = torch.nanvar(masked, dim=1, unbiased=False).nan_to_num(0.0)
-    max_s = torch.nanmax(masked, dim=1).values.nan_to_num(0.0)
-    min_s = torch.nanmin(masked, dim=1).values.nan_to_num(0.0)
+    nan_mask = torch.isnan(masked)
     mean_s = torch.nanmean(masked, dim=1).nan_to_num(0.0)
+    diff_sq = (masked - mean_s.unsqueeze(1)).pow(2).nan_to_num(0.0)
+    valid_count = (~nan_mask).float().sum(dim=1).clamp(min=1.0)
+    var = diff_sq.sum(dim=1) / valid_count
+    max_s = (
+        masked.masked_fill(nan_mask, float("-inf")).max(dim=1).values.nan_to_num(0.0)
+    )
+    min_s = masked.masked_fill(nan_mask, float("inf")).min(dim=1).values.nan_to_num(0.0)
     span = max_s - min_s
 
     mask_count = field_mask.float().sum(dim=1).clamp(min=1.0)
