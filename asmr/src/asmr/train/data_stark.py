@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 import numpy as np
@@ -13,12 +16,13 @@ from torch.utils.data import Dataset
 
 from asmr.train.data import RankingBatch
 
+logger = logging.getLogger(__name__)
+
 
 class SupportsQueryEncode(Protocol):
     """Anything with ``encode(texts) -> [B,H]`` (e.g. HfQueryEncoder)."""
 
-    def encode(self, texts: list[str]) -> Tensor:
-        ...
+    def encode(self, texts: list[str]) -> Tensor: ...
 
 
 @dataclass
@@ -48,6 +52,52 @@ class StarkRankingDataset(Dataset[StarkRankingExample]):
 
     def __getitem__(self, idx: int) -> StarkRankingExample:
         return self._examples[idx]
+
+    @classmethod
+    def from_jsonl(cls, path: Path) -> "StarkRankingDataset":
+        """Load examples from a JSONL file.
+
+        Each line is a JSON object with fields:
+            query_text (str), doc_ids (list[str]),
+            scores (list[list[list[float]]] — shape [F,M,D] or [F,D]),
+            relevance (list[float] — length D),
+            field_mask (list[list[bool]] — shape [F,D], optional).
+
+        Args:
+            path: Path to .jsonl file.
+
+        Returns:
+            StarkRankingDataset loaded into memory.
+        """
+        examples: list[StarkRankingExample] = []
+        with open(path) as f:
+            for lineno, line in enumerate(f, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON at line {lineno}: {e}") from e
+
+                scores_raw = row["scores"]
+                scores = np.array(scores_raw, dtype=np.float32)
+                relevance = np.array(row["relevance"], dtype=np.float32)
+                field_mask: npt.NDArray[np.bool_] | None = None
+                if "field_mask" in row:
+                    field_mask = np.array(row["field_mask"], dtype=bool)
+
+                examples.append(
+                    StarkRankingExample(
+                        query_text=str(row["query_text"]),
+                        doc_ids=[str(d) for d in row["doc_ids"]],
+                        scores=scores,
+                        relevance=relevance,
+                        field_mask=field_mask,
+                    )
+                )
+        logger.info("Loaded %d examples from %s", len(examples), path)
+        return cls(examples)
 
 
 def collate_stark_batch(

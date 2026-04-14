@@ -1,6 +1,6 @@
 """Tests for src/evaluation/metrics.py."""
 
-from evaluation.metrics import hit_at_k, mean_reciprocal_rank, recall_at_k
+from asmr.evaluation.metrics import hit_at_k, mean_reciprocal_rank, recall_at_k
 
 
 def test_hit_at_k() -> None:

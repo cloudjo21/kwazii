@@ -39,7 +39,7 @@ def _compute_cols_scores_sync(
 ) -> Tuple[np.ndarray, np.ndarray]:
     if not hits:
         return np.array([], dtype=np.int64), np.array([], dtype=np.float32)
-    ids_arr = np.fromiter((h[0] for h in hits), dtype=np.str_)
+    ids_arr = np.array([h[0] for h in hits], dtype=object)
     sc_arr = np.fromiter((h[1] for h in hits), dtype=np.float32)
     cols = np.fromiter((docid2col.get(str(x), -1) for x in ids_arr), dtype=np.int64)
     valid = cols >= 0

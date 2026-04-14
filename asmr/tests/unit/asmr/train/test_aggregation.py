@@ -29,7 +29,7 @@ def test_mfar_adapter_matches_manual_weighting() -> None:
 
 def test_aggregation_head_shape() -> None:
     b, f_num, m_num, d_num = 1, 2, 2, 4
-    h, aux_dim = 8, 8
+    h, aux_dim = 8, 9  # build_aux_features returns 9 features
     q = torch.randn(b, h)
     scores = torch.randn(b, f_num, m_num, d_num)
     mask = torch.ones(b, f_num, d_num, dtype=torch.bool)
