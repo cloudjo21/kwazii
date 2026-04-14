@@ -5,7 +5,12 @@ description = "ASMR"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "kwazii" # 로컬 패키지 참조
+    "kwazii", # 로컬 패키지 참조
+]
+
+[project.optional-dependencies]
+train = [
+    "torch>=2.0",
 ]
 
 [dependency-groups]

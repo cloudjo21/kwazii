@@ -44,7 +44,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["asmr/src", "examples/agno"]
+where = ["asmr/src", "examples/agno", "src"]
 
 [project.optional-dependencies]
 flash-attn = ["flash-attn>=2.5.0"]
@@ -98,8 +98,8 @@ strict_equality = true
 extra_checks = true
 
 # Path configuration
-files = ["asmr/src", "examples/agno"]
-mypy_path = ["asmr/src", "examples/agno"]
+files = ["asmr/src", "examples/agno", "src/evaluation"]
+mypy_path = ["asmr/src", "examples/agno", "src"]
 
 # Import configuration
 ignore_missing_imports = true
