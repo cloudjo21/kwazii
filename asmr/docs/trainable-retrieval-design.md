@@ -122,7 +122,7 @@ mFAR류의 강점(필드 분해, 필드별 sparse/dense, 쿼리 조건부 가중
 | 구성요소 | 역할 | 확장 포인트 |
 |----------|------|-------------|
 | `retrieve/retrievers.py` — `QueryRouter` | 필드명 → 해당 `BaseFieldRetriever` | 필드별 (sparse/dense/이미지) 후보 생성은 **고정 파이프라인**으로 유지 가능 |
-| `retrieve/aggregate.py` — `aggregate_field_scores_async` | 필드별 top-k를 모아 `(doc_ids, scores[f,d])` 행렬 | **최종 문서 점수로 가기 직전 텐서** — trainable head의 입력 |
+| `retrieve/aggregate.py` — `aggregate_field_scores_hybrid_async` | 필드별 lexical/dense top-k를 모아 `(doc_ids, scores[F, 2, D])` 행렬 | **최종 문서 점수로 가기 직전 텐서** — trainable head의 입력; `[F, 2, D]`의 M축이 lex/dense 분리 |
 | `retrieve/helpers.py` — `DocumentRetriever` | 전체/스마트 필드 선택 후 aggregate 호출 | **학습 모드**에서 감독·배치 루프 진입점 |
 | `index/config.py` — `FieldConfig` | 필드명, 토크나이저, sparse/dense | **스키마 타입·역할 힌트·심볼릭 제약 채널** 메타데이터 확장 |
 | 통합 테스트 `scoring_helper` | 필드 점수 합산 | **baseline** — 학습 시에는 합산 대신 `G_θ` 출력으로 대체 |
@@ -251,28 +251,31 @@ slice 예시:
 
 ---
 
-## 6. 제안 코드 레이아웃 (신규)
+## 6. 코드 레이아웃
 
-기존 `retrieve` / `index`를 깨지 않고 확장한다.
-
-구현됨: `asmr/src/asmr/train/` (`MFARFieldAdapter`, `AggregationHead`, `AggregationTrainer`, `apply_aggregation_head` 등). PyTorch는 `asmr[train]` extra 또는 루트 `kwazii` 환경에서 설치.
+기존 `retrieve` / `index`를 깨지 않고 확장한다. PyTorch는 `asmr[train]` extra 또는 루트 `kwazii` 환경에서 설치.
 
 ```
 asmr/
   train/                          # 구현: src/asmr/train/
     __init__.py
     config.py                     # 학습 하이퍼파라미터, 필드 role 차원, 손실 가중치
-    data.py                       # (q, d, field labels, negatives) 데이터셋
+    data.py                       # base Dataset / RankingBatch 정의
+    data_stark.py                 # StarkRankingDataset, collate_ranking_batch
     features.py                   # consistency·disagreement·schema aux 계산
     aggregation.py                # G_θ, MFARFieldAdapter
     losses.py                     # ranking + field + distillation + rejection
-    trainer.py                    # training_step 래퍼
-    inference.py                  # numpy shortlist → head 적용
+    trainer.py                    # AggregationTrainer (학습 루프)
+    train_script.py               # 진입점: 옵티마이저, 체크포인트
+    __main__.py                   # python -m asmr.train 진입
+    query_encoder.py              # HfQueryEncoder — query_emb [B, H] 생산
+    inference.py                  # apply_aggregation_head 등 추론 유틸
   retrieve/
-    aggregate.py                  # 선택: 학습된 head 호출 경로 추가 (동기/비동기)
+    aggregate.py                  # aggregate_field_scores_hybrid_async → [F, 2, D]
+    helpers.py                    # retrieve_with_aggregation_head — optional head 재정렬
 ```
 
-- **추론 경로:** `aggregate_field_scores_async` 이후 `AggregationHead.forward(scores_matrix, query_emb, field_meta, doc_meta) → doc_scores`.
+- **추론 경로:** `aggregate_field_scores_hybrid_async`로 `[F, 2, D]` 점수 행렬 획득 → `retrieve_with_aggregation_head`에 `aggregation_head` + `query_encoder` 주입 시 `G_θ`로 재정렬; 미주입 시 aggregate-only.
 - **학습 경로:** 동일 텐서를 배치로 모아 손실 계산.
 
 ---
