@@ -79,13 +79,49 @@ flowchart LR
 
 ### 2.3 추론 시 데이터 흐름
 
-1. `DocumentRetriever` / `aggregate.retrieve_documents`로 `(doc_ids, scores[field, doc])` 획득.  
-2. 선택적으로 `G_θ`에 태워 최종 리스트 정렬.  
+1. `aggregate_field_scores_hybrid_async`로 `(doc_ids, scores[F, 2, D])` 획득 — lexical/dense 분리.  
+2. 선택적으로 `retrieve_with_aggregation_head`(`retrieve/helpers.py`)에 `aggregation_head` + `query_encoder` 주입 → 학습된 `G_θ`로 재정렬; 미주입 시 aggregate-only 경로.  
 3. Baseline: `tests/integration/helpers/scoring_helper.py` 의 **필드 합산**은 **비학습 baseline**으로 유지·비교.
 
 ---
 
 ## 3. Tensor contracts (텐서 계약)
+
+### 3.0 aggregate API 선택 가이드
+
+| 함수 | 입력 | 출력 shape | 용도 |
+|------|------|------------|------|
+| `aggregate_field_scores_async` | `fields: list[str]` — 독립 router 키 목록 | `[F, D]` | 각 키를 독립 필드로 취급; scorer 구분 불필요한 경우 |
+| `aggregate_field_scores_hybrid_async` | `field_lex_dense_pairs: list[tuple[str, str]]` — `(lex_key, dense_key)` 쌍 | `[F, 2, D]` | 동일 논리 필드의 lexical/dense를 `M` 차원으로 명시적 분리; mFAR `[F, M, D]` 정렬 |
+
+**핵심 차이: 논리 필드 페어링과 M 차원**
+
+`aggregate_field_scores_async`에 sparse·dense 키를 함께 넘길 수 있지만, 어느 행이 lexical이고 어느 행이 dense인지 **구조적으로 인코딩되지 않는다.** `hybrid` 버전은 `(lex, dense)` 쌍을 `M=0/1` 인덱스로 고정해 downstream fusion(per-field RRF, weighted sum 등)이 가능하다.
+
+```python
+# aggregate_field_scores_async — [F, D]
+# 4개 키를 넘겨도 출력은 [4, D]; lex/dense 구분 소실
+doc_ids, scores = await aggregate_field_scores_async(
+    query,
+    fields=["title_bm25", "title_vec", "body_bm25", "body_vec"],
+    doc_retriever=router,
+)
+# scores.shape == (4, D)
+# → title_bm25가 몇 번 행인지는 호출자가 직접 관리해야 함
+
+# aggregate_field_scores_hybrid_async — [F, 2, D]
+# 논리 필드 2개 × M=2(lex/dense) → shape [2, 2, D]
+doc_ids, scores = await aggregate_field_scores_hybrid_async(
+    query,
+    field_lex_dense_pairs=[("title_bm25", "title_vec"), ("body_bm25", "body_vec")],
+    doc_retriever=router,
+)
+# scores.shape == (2, 2, D)
+# scores[0, 0, :] → title lexical,  scores[0, 1, :] → title dense
+# scores[1, 0, :] → body  lexical,  scores[1, 1, :] → body  dense
+```
+
+§3.2의 `scores_raw: [B, F, M, D]` 계약은 `aggregate_field_scores_hybrid_async` 출력을 배치 차원 `B`로 쌓은 형태다.
 
 ### 3.1 기호
 
@@ -117,7 +153,7 @@ mFAR는 스코어러·필드별 스케일 차이를 완화하기 위해 **필드
 
 ---
 
-## 4. 모듈 설계 (제안 패키지)
+## 4. 모듈 설계 (구현 패키지)
 
 `trainable-retrieval-design.md` §6과 동일 계열:
 
@@ -125,17 +161,22 @@ mFAR는 스코어러·필드별 스케일 차이를 완화하기 위해 **필드
 asmr/src/asmr/train/
   __init__.py
   config.py           # τ, λ들, D_max, G_theta hidden, dropout
-  data.py             # Dataset: STaRK 포맷 → 텐서 배치
+  data.py             # base Dataset / RankingBatch 정의
+  data_stark.py       # StarkRankingDataset, collate_ranking_batch
   features.py         # FeatureBuilder: aux §5
   aggregation.py      # FieldRoleProjector + AggregationHead (G_theta)
   losses.py           # contrastive + optional field-level + distillation
-  trainer.py          # PyTorch Lightning 등 — 의존성은 pyproject에서 확정
+  trainer.py          # AggregationTrainer (학습 루프)
+  train_script.py     # 진입점: 옵티마이저, 체크포인트 저장/로드
+  __main__.py         # python -m asmr.train 진입
+  query_encoder.py    # HfQueryEncoder — query_emb [B, H] 생산
+  inference.py        # apply_aggregation_head 등 추론 유틸
 ```
 
-**기존 코드 호출 지점**
+**retrieve 계층 호출 지점**
 
-- `retrieve/aggregate.py`: 추론 시 `scores` 산출 직후 optional hook `apply_aggregation_head(...)`.
-- `retrieve/helpers.py`: 학습 플래그 시 동일 hook.
+- [`retrieve/aggregate.py`](../src/asmr/retrieve/aggregate.py): `aggregate_field_scores_hybrid_async` → `[F, 2, D]` 점수 행렬 (§3.0 참고).
+- [`retrieve/helpers.py`](../src/asmr/retrieve/helpers.py): `retrieve_with_aggregation_head` — optional `aggregation_head` + `query_encoder` 주입 시 학습된 헤드로 재정렬; `torch` 미설치 시 aggregate-only 경로 유지(지연 import).
 
 ---
 
@@ -299,149 +340,46 @@ def forward_batch(batch):
 | 2026-04-07 | `src/evaluation` 미존재 시 asmr 내부 eval로 시작한다고 명시 | [job-request.md](../../job-request.md)와 현 레포 상태 정합 |
 | 2026-04-07 | §13 다음 단계 구현 추가; `trainable-retrieval-next-phase.plan` 내용을 §13(13.0·13.9–13.12)에 통합 후 plan 파일·`docs/plans/` 제거 | 단일 기술 문서 |
 | 2026-04-14 | 평가 코드 경로 `src/evaluation` → `asmr/src/asmr/evaluation/` (`asmr.evaluation` 패키지)로 이관 | 루트 `src/` 제거, asmr 패키지 내 통합 |
+| 2026-04-18 | §3.0 aggregate API 선택 가이드 추가(비교 표·코드 예제); §13.0 현재 상태 표를 §13.12 체크리스트 기준으로 전면 갱신 | 구현 완료 항목 반영 |
+| 2026-04-18 | §4 모듈 목록을 실제 구현 파일 기준으로 갱신; §2.3 추론 흐름에 `retrieve_with_aggregation_head` 반영; §13 완료 서브섹션(13.1–13.6, 13.8, 13.9, 13.12) 제거 후 Phase 2·품질 게이트·범위 밖으로 재편(13.1–13.3) | Phase 1 완료에 따른 문서 구조 정리 |
 
 *(이후 개정 시 행 추가.)*
 
 ---
 
-## 13. 다음 단계 구현 (코드 레벨)
+## 13. Phase 2 계획 및 품질 기준
 
-§1–§11까지는 **설계 원리**와 **이미 구현된** `asmr/train/` 헤드·손실·추론 경로를 다룬다. 이 절은 **아직 코드로 연결되지 않은** 단계를 **모듈·파일 단위**로 고정한다. 용어(shortlist, scorer 등)는 [trainable-retrieval-design.md §Terminology](./trainable-retrieval-design.md) 참고.
+Phase 1 (hybrid shortlist, query encoder, STaRK 로더, 학습 스크립트, DocumentRetriever 통합, evaluation) 구현은 완료되었다(§4 모듈 목록 참고). 이 절은 **선택적 Phase 2** 계획과 **지속 적용 품질 기준**을 정리한다.
 
-### 13.0 목적·현재 상태
-
-**목적**
-
-1. 설계와 구현 티켓이 대응되도록 **다음 코드 작업**을 고정한다.  
-2. mFAR 정렬 shortlist(`[F,M,D]`), 질의 인코더, STaRK 연동, 학습 스크립트, `DocumentRetriever` 통합, `asmr/evaluation` 벤치를 단계적으로 완성한다.
-
-**현재 상태 (요약)**
+### 13.0 Phase 1 완료 현황
 
 | 영역 | 상태 |
 |------|------|
 | `asmr/train/` 헤드·손실·추론 | 구현됨 (`MFARFieldAdapter`, `AggregationHead`, `apply_aggregation_head` 등) |
-| `aggregate_field_scores_async` | `[F, D]` 단일 스코어러 — **mFAR식 `M`(lex+dense) 미분리** |
-| `query_emb` 파이프라인 | 없음 |
-| STaRK → `RankingBatch` | 없음 |
-| `asmr/evaluation/` | `asmr/src/asmr/evaluation/` 구현됨 |
+| hybrid shortlist `[F, M, D]` | 구현됨 — `aggregate_field_scores_hybrid_async` (`retrieve/aggregate.py`), str `doc_id` 통일 |
+| `query_emb` 파이프라인 | 구현됨 — `HfQueryEncoder` (`asmr/train/query_encoder.py`) |
+| STaRK → `RankingBatch` | 구현됨 — `asmr/train/data_stark.py` |
+| `DocumentRetriever` optional head | 구현됨 — `retrieve_with_aggregation_head` (`retrieve/helpers.py`) |
+| 학습 스크립트 | 구현됨 — `asmr/train/train_script.py`, `python -m asmr.train` |
+| `asmr/evaluation/` | 구현됨 — `metrics.py`, `stark_eval.py` (qrels 연동은 데이터 준비 시) |
 
-### 13.1 스코어 텐서 `M` 차원·hybrid shortlist
-
-- **목표**: [`aggregate_field_scores_async`](../src/asmr/retrieve/aggregate.py)가 주는 **`[F, D]`** 를 mFAR 정렬에 맞게 **`[F, M, D]`** 로 확장한다. 최소 **`M=2`**(lexical + dense; §3.1 기호 `M`).
-- **옵션 A**: `retrieve/aggregate.py`에 `aggregate_field_scores_hybrid_async` 등 — 필드마다 sparse·dense 인덱스를 각각 조회한 뒤 **동일 shortlist 합집합**에 대해 `(f,m)` 슬롯을 채운다.
-- **옵션 B**: `QueryRouter` 스키마를 바꾸지 않고, **`asmr/train/shortlist.py`** (또는 학습 전용 래퍼)에서 필드별로 두 번 `retrieve` 후 행렬을 스택한다.
-- **정합 이슈**: `doc_id`가 retriever 출력·`docid2col` 키에서 **str vs int**로 섞이면 열 정렬이 틀어진다. 구현 시 **한 타입으로 통일**하고, 본 절·코드 주석에 명시한다.
-
-### 13.2 질의 임베딩 `query_emb`
-
-- **목표**: `MFARFieldAdapter`·`AggregationHead`가 요구하는 **`query_emb` `[B, H]`** 를 생산한다.
-- **산출물**: `asmr/train/query_encoder.py`(또는 `retrieve/query_encoder.py`) — HF `BAAI/bge-m3`, `facebook/contriever-msmarco` 등 단일 래퍼, `encode(texts) -> Tensor[B, H]`.
-- **계약**: `TrainConfig.query_dim` / 헤드 생성자의 `query_dim`과 **`H` 일치**.
-
-### 13.3 STaRK 데이터 파이프라인
-
-- **입력**: STaRK 공식 스플릿 또는 [microsoft/multifield-adaptive-retrieval](https://github.com/microsoft/multifield-adaptive-retrieval) 전처리·필드 정의.
-- **출력**: 배치마다 shortlist 상의 `scores`, `field_mask`, `relevance` → 기존 [`RankingBatch`](../src/asmr/train/data.py).
-- **산출물**: `asmr/train/data.py` 확장 — `StarkRankingDataset`, `collate_ranking_batch` 등.
-
-### 13.4 학습 스크립트
-
-- **산출물**: `asmr/train/train_script.py` 또는 `python -m asmr.train.run`.
-- **내용**: 옵티마이저, 에폭 루프, `normalize_scores_per_field_scorer`(§3.3 Opt A) 적용 여부, 체크포인트 저장/로드, `AggregationTrainer.training_step` 호출.
-
-### 13.5 추론 통합
-
-- **목표**: [`DocumentRetriever`](../src/asmr/retrieve/helpers.py)가 `(doc_ids, scores)`를 받은 뒤 **선택적으로** 학습된 헤드로 재정렬.
-- **인터페이스**: optional `aggregation_head`, `query_encoder` 또는 사전 계산 `query_emb`; **`torch` 미설치** 시 기존 aggregate-only 경로 유지(지연 import).
-
-### 13.6 평가: `asmr/evaluation`
-
-- **`asmr/src/asmr/evaluation/`** 에 Hit@1, Recall@20, MRR을 둔다(`trec_eval` 서브프로세스 또는 `pytrec_eval` 등).
-- **산출물**: `metrics.py`, STaRK용 `stark_eval.py` runner — asmr 인덱스·헤드·데이터 로더를 호출.
-- **성공 기준**: job-request의 핵심 실험 대비 **경쟁 가능 또는 약 90%** — 본 모듈에서 수치 보고.
-
-### 13.7 (선택) Phase 2 — 인코더 대조 학습
+### 13.1 (선택) Phase 2 — 인코더 대조 학습
 
 - mFAR 본문의 **공유 인코더** + 식 (1)(2) **대조·양방향 손실**(`L_c`, `L_b`)을 끝까지 올릴 경우, **헤드만 학습하는 Phase 1**과 브랜치·하이퍼파라미터를 분리한다.
 
-### 13.8 권장 구현 순서 (요약)
-
-```mermaid
-flowchart TD
-  subgraph p1 [Phase1]
-    S1["13.1 F,D to F,M,D"]
-    S2["13.2 query_encoder"]
-    S3["13.5 DocumentRetriever hook"]
-  end
-  subgraph p2 [Phase2]
-    S4["13.3 STaRK loader"]
-    S5["13.4 train_script"]
-  end
-  subgraph p3 [Phase3]
-    S6["13.6 asmr/evaluation"]
-  end
-  S1 --> S2 --> S3 --> S4 --> S5 --> S6
-```
-
-### 13.9 작업 ID(B1–B7)와 산출물
-
-절 번호(13.1–13.6)와 대응하는 **구현 티켓** 표기다.
-
-```mermaid
-flowchart TD
-  subgraph p1 [Phase1]
-    B1["B1: F,D to F,M,D shortlist"]
-    B2["B2: query_encoder + TrainConfig"]
-    B3["B3: DocumentRetriever optional head"]
-  end
-  subgraph p2 [Phase2]
-    B4["B4: STaRK loader + RankingBatch"]
-    B5["B5: train_script + checkpoint"]
-  end
-  subgraph p3 [Phase3]
-    B6["B6: asmr/evaluation metrics"]
-    B7["B7: stark_eval runner"]
-  end
-  B1 --> B2 --> B3 --> B4 --> B5 --> B6 --> B7
-```
-
-| ID | 작업 | 산출물 |
-|----|------|--------|
-| B1 | Hybrid shortlist: 필드×스코어러×문서 `[F,M,D]` + 합집합 shortlist | `aggregate` 확장 또는 `asmr/train/shortlist.py` |
-| B2 | HF 기반 `query_emb` `[B,H]` | `asmr/train/query_encoder.py` |
-| B3 | `DocumentRetriever`에 optional head 경로 | `retrieve/helpers.py` (+ optional import) |
-| B4 | STaRK 로더 + collate | `asmr/train/data.py` 확장 |
-| B5 | 학습 루프 + 체크포인트 | `asmr/train/train_script.py` 등 |
-| B6 | Hit@1, R@20, MRR | `asmr/evaluation/metrics.py` |
-| B7 | STaRK 평가 runner | `asmr/evaluation/stark_eval.py` |
-
-**프로젝트 성공 기준** ([job-request.md](../../job-request.md)): 핵심 실험 대비 경쟁 가능 또는 약 **90%** 수준 — B6–B7에서 측정.
-
-### 13.10 품질 게이트
+### 13.2 품질 게이트
 
 - `asmr/tests/unit`: shortlist shape, `RankingBatch`, `apply_aggregation_head` e2e (torch 사용 가능 환경).  
 - `uv run ruff format` → `ruff check --fix` → `uv run mypy` (변경 경로, [CLAUDE.md](../../CLAUDE.md)).  
 - STaRK **소규모 샘플** 스모크(전체 벤치는 별도 리소스).
 
-### 13.11 범위 밖 (명시적 보류)
+### 13.3 범위 밖 (명시적 보류)
 
 - 필드 단위 weak supervision 전체 LLM 파이프라인.  
 - MIRACL/MKQA 전 벤치 재현(teacher 회귀 **스모크**만 고려).
-
-### 13.12 실행 체크리스트 (Todo)
-
-| # | 항목 | 상태 |
-|---|------|------|
-| 1 | §13 본문·revision log (본 문서) | done |
-| 2 | `[F,D]`→`[F,M,D]` + `doc_id` 정합 | done — `aggregate_field_scores_hybrid_async`, str `doc_id` |
-| 3 | `query_encoder.py` | done — `asmr/train/query_encoder.py` (`HfQueryEncoder`) |
-| 4 | STaRK 로더 + `RankingBatch` collate | done — `asmr/train/data_stark.py` |
-| 5 | 학습 스크립트 + 체크포인트 | done — `asmr/train/train_script.py`, `python -m asmr.train` |
-| 6 | `DocumentRetriever` optional aggregation head | done — `retrieve_with_aggregation_head` |
-| 7 | `asmr/evaluation` + STaRK runner | done — `asmr/evaluation/metrics.py`, `stark_eval.py` (qrels 연동은 데이터 준비 시) |
 
 ---
 
 ## 14. 한 줄 정리
 
-구현 관점에서 asmr trainable 층은 **`aggregate`가 만든 `[F,(M),D]` 점수와 질의 임베딩·aux 특성을 받아 문서별 스칼라 점수를 내는 얇은 헤드**이며, 벤치는 **멀티필드는 STaRK+mFAR 프로토콜**, **다국어·통합 스코어량은 MIRACL/MKQA 등 BGE-M3 축**으로 나누어 보고한다. **다음 구현 단계**는 **§13**을 따른다.
+구현 관점에서 asmr trainable 층은 **`aggregate_field_scores_hybrid_async`가 만든 `[F, 2, D]` 점수와 질의 임베딩·aux 특성을 받아 문서별 스칼라 점수를 내는 얇은 헤드**이며, 벤치는 **멀티필드는 STaRK+mFAR 프로토콜**, **다국어·통합 스코어량은 MIRACL/MKQA 등 BGE-M3 축**으로 나누어 보고한다. Phase 1 구현은 완료되었으며, 선택적 Phase 2(인코더 대조 학습)는 **§13.1**을 참고한다.
