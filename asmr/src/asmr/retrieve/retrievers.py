@@ -1,30 +1,75 @@
 import abc
 import enum
-from typing import List, Union
+from typing import TYPE_CHECKING, Union
 
 from asmr.index import fields
-from asmr.index.models import FieldBasedRanking
+from asmr.index.models import FieldBasedRanking, FieldBasedRankingItem
 from asmr.retrieve.query import Query
+from asmr.retrieve.result import Err, Ok, Result
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 TOP_K_RETRIEVE = 100
 
 
 class ALLOW_RETRIEVE_MODE(enum.Enum):
+    """Deprecated: use BaseFieldRetriever.can_handle() instead."""
+
     TEXT_ONLY = 1
     IMAGE_ONLY = 2
     MULTIMODAL = 3
 
 
+# ---------------------------------------------------------------------------
+# Module-level pure helpers — single coercion point for query content
+# ---------------------------------------------------------------------------
+
+
+def _extract_text_content(query: Union[str, Query]) -> str:
+    if isinstance(query, str):
+        return query
+    if not query.has_text():
+        raise ValueError("Query has no text content")
+    return query.get_text()
+
+
+def _extract_image_content(query: Query) -> "Image.Image":
+    if not query.has_image():
+        raise ValueError("Query has no image content")
+    return query.get_image()
+
+
+# ---------------------------------------------------------------------------
+# Abstract base
+# ---------------------------------------------------------------------------
+
+
 class BaseFieldRetriever(abc.ABC):
-    retrieve_mode: ALLOW_RETRIEVE_MODE
+    """Single-field retriever strategy."""
 
     @abc.abstractmethod
-    def retrieve(self, query: Union[str, Query], k: int) -> FieldBasedRanking:
-        pass
+    def can_handle(self, query: Query) -> bool:
+        """Return True if this retriever is compatible with the query's content."""
+        ...
+
+    @abc.abstractmethod
+    def retrieve(self, query: Query, k: int) -> Result[FieldBasedRanking, str]:
+        """Retrieve top-k results.
+
+        Returns Ok(ranking) on success or Err(reason) when the query type is
+        incompatible. Raises only for programming errors.
+        """
+        ...
+
+
+# ---------------------------------------------------------------------------
+# Concrete retrievers
+# ---------------------------------------------------------------------------
 
 
 class SparseTextFieldRetriever(BaseFieldRetriever):
-    """Retriever for sparse text fields (BM25)"""
+    """BM25-style sparse text retriever."""
 
     def __init__(
         self,
@@ -34,20 +79,17 @@ class SparseTextFieldRetriever(BaseFieldRetriever):
         self.field_index = field_index
         self.retrieve_mode = retrieve_mode
 
-    def retrieve(self, query: Union[str, Query], k: int) -> FieldBasedRanking:
-        if isinstance(query, Query):
-            if not query.has_text():
-                raise ValueError(
-                    "SparseTextFieldRetriever requires text content in query")
-            query_text = query.get_text()
-        else:
-            query_text = query
+    def can_handle(self, query: Query) -> bool:
+        return query.has_text()
 
-        return self.field_index.search(query_text, k)
+    def retrieve(self, query: Query, k: int) -> Result[FieldBasedRanking, str]:
+        if not self.can_handle(query):
+            return Err("SparseTextFieldRetriever requires text content in query")
+        return Ok(self.field_index.search(_extract_text_content(query), k))
 
 
 class DenseTextFieldRetriever(BaseFieldRetriever):
-    """Retriever for dense text fields"""
+    """Dense text embedding retriever."""
 
     def __init__(
         self,
@@ -57,20 +99,17 @@ class DenseTextFieldRetriever(BaseFieldRetriever):
         self.field_index = field_index
         self.retrieve_mode = retrieve_mode
 
-    def retrieve(self, query: Union[str, Query], k: int) -> FieldBasedRanking:
-        if isinstance(query, Query):
-            if not query.has_text():
-                raise ValueError(
-                    "DenseTextFieldRetriever requires text content in query")
-            query_text = query.get_text()
-        else:
-            query_text = query
+    def can_handle(self, query: Query) -> bool:
+        return query.has_text()
 
-        return self.field_index.search(query_text, k)
+    def retrieve(self, query: Query, k: int) -> Result[FieldBasedRanking, str]:
+        if not self.can_handle(query):
+            return Err("DenseTextFieldRetriever requires text content in query")
+        return Ok(self.field_index.search(_extract_text_content(query), k))
 
 
 class DenseImageFieldRetriever(BaseFieldRetriever):
-    """Retriever for dense image fields"""
+    """Dense image retriever; supports both image-to-image and text-to-image search."""
 
     def __init__(
         self,
@@ -80,33 +119,23 @@ class DenseImageFieldRetriever(BaseFieldRetriever):
         self.field_index = field_index
         self.retrieve_mode = retrieve_mode
 
-    def retrieve(self, query: Union[str, Query], k: int) -> FieldBasedRanking:
-        if isinstance(query, Query):
-            if query.has_text(
-            ) and self.retrieve_mode == ALLOW_RETRIEVE_MODE.TEXT_ONLY:
-                # Text-to-image search
-                query_content = query.get_text()
-            elif (query.has_image()
-                  and self.retrieve_mode == ALLOW_RETRIEVE_MODE.IMAGE_ONLY):
-                # Image-to-image search
-                query_content = query.get_image()
-            elif query.has_text() and query.has_image():
-                # For multimodal queries, we can use either text or image
-                # Priority: use image if available, otherwise text
-                query_content = (query.get_image()
-                                 if query.has_image() else query.get_text())
-            else:
-                raise ValueError(
-                    "Query must have either text or image content")
-        else:
-            # Assume string query for text-to-image search
-            query_content = query
+    def can_handle(self, query: Query) -> bool:
+        return query.has_image() or query.has_text()
 
-        return self.field_index.search(query_content, k)
+    def retrieve(self, query: Query, k: int) -> Result[FieldBasedRanking, str]:
+        if not self.can_handle(query):
+            return Err("Query must have either text or image content")
+        # Image takes priority; fall back to text for cross-modal search.
+        query_content = (
+            _extract_image_content(query)
+            if query.has_image()
+            else _extract_text_content(query)
+        )
+        return Ok(self.field_index.search(query_content, k))
 
 
 class MultiModalFieldRetriever(BaseFieldRetriever):
-    """Retriever that can handle multimodal queries across different field types"""
+    """Retriever for queries that carry both text and image content."""
 
     def __init__(
         self,
@@ -118,75 +147,73 @@ class MultiModalFieldRetriever(BaseFieldRetriever):
         self.image_field_index = image_field_index
         self.retrieve_mode = retrieve_mode
 
-    def retrieve(self, query: Union[str, Query], k: int) -> FieldBasedRanking:
-        if isinstance(query, str):
-            # String query - use text field if available
-            if self.text_field_index is None:
-                raise ValueError("No text field available for string query")
-            return self.text_field_index.search(query, k)
+    def can_handle(self, query: Query) -> bool:
+        return query.has_text() and query.has_image()
 
-        if not isinstance(query, Query):
-            raise ValueError("Query must be string or Query object")
-
-        if not query.has_text() or not query.has_image():
-            raise ValueError(
+    def retrieve(self, query: Query, k: int) -> Result[FieldBasedRanking, str]:
+        if not self.can_handle(query):
+            return Err(
                 "MultiModalFieldRetriever requires both text and image content in query"
             )
 
-        results = []
+        text_ranking: FieldBasedRanking = self.text_field_index.search(
+            _extract_text_content(query), k
+        )
+        image_ranking: FieldBasedRanking = self.image_field_index.search(
+            _extract_image_content(query), k
+        )
 
-        # Handle text content
-        if query.has_text() and self.text_field_index:
-            text_results = self.text_field_index.search(query.get_text(), k)
-            results.extend(text_results)
+        # Merge and re-rank by score; keep top-k as a proper FieldBasedRanking.
+        merged = sorted(
+            list(text_ranking) + list(image_ranking),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:k]
 
-        # Handle image content
-        if query.has_image() and self.image_field_index:
-            image_results = self.image_field_index.search(query.get_image(), k)
-            results.extend(image_results)
+        items = [
+            FieldBasedRankingItem(doc_id=doc_id, score=score)
+            for doc_id, score in merged
+        ]
+        return Ok(
+            FieldBasedRanking(
+                field_name="multimodal",
+                query=str(query),
+                items=items,
+                total_retrieved=len(items),
+            )
+        )
 
-        # Sort by score and return top-k
-        results.sort(key=lambda x: x[1], reverse=True)
-        return results[:k]
+
+# ---------------------------------------------------------------------------
+# Router — single-field registry (low-level dispatcher)
+# ---------------------------------------------------------------------------
 
 
 class QueryRouter:
-    """Router to direct queries to appropriate field retrievers"""
+    """Single-field registry and dispatcher.
 
-    def __init__(self, field_retrievers: dict[str, BaseFieldRetriever]):
+    Responsibilities:
+    - Map field names to their BaseFieldRetriever implementations.
+    - Dispatch a single-field retrieve call, returning Ok/Err based on
+      can_handle() compatibility.
+
+    Does NOT decide which fields to query; that policy lives in
+    DocumentRetriever (helpers.py) and pipeline.py.
+    """
+
+    def __init__(self, field_retrievers: dict[str, BaseFieldRetriever]) -> None:
         self.field_retrievers = field_retrievers
 
     @property
     def fields(self) -> list[str]:
         return list(self.field_retrievers.keys())
 
-    def retrieve(self, field: str, query: Union[str, Query],
-                 k: int) -> FieldBasedRanking:
-        """Retrieve using field name and query (supports both legacy string and Query object)"""
+    def retrieve(
+        self, field: str, query: Query, k: int
+    ) -> Result[FieldBasedRanking, str]:
         if field not in self.field_retrievers:
-            raise ValueError(f"Field '{field}' not found in QueryRouter.")
+            raise KeyError(f"Field '{field}' not found in QueryRouter.")
         retriever = self.field_retrievers[field]
+        if not retriever.can_handle(query):
+            return Err(f"Retriever for '{field}' cannot handle this query type.")
         return retriever.retrieve(query, k)
-
-    # def smart_retrieve(self, query: Query, field_name: str, k: int) -> List[tuple]:
-    #     """Smart retrieval for a single field that automatically determines best method based on query content"""
-    #     if field_name not in self.field_retrievers:
-    #         raise ValueError(f"Field '{field_name}' not found in QueryRouter.")
-    #     retriever = self.field_retrievers[field_name]
-
-    #     try:
-    #         # Try retrieval based on field and query compatibility
-    #         if isinstance(retriever, (SparseTextFieldRetriever, DenseTextFieldRetriever)):
-    #             if query.has_text():
-    #                 return retriever.retrieve(query, k)
-    #         elif isinstance(retriever, DenseImageFieldRetriever):
-    #             if query.has_image() or query.has_text():  # Support cross-modal
-    #                 return retriever.retrieve(query, k)
-    #         elif isinstance(retriever, MultiModalFieldRetriever):
-    #             return retriever.retrieve(query, k)
-    #         else:
-    #             # Fallback: try direct retrieval
-    #             return retriever.retrieve(query, k)
-    #     except ValueError:
-    #         # If incompatible, return empty list
-    #         return []
