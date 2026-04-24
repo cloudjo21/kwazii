@@ -1,0 +1,25 @@
+{
+  "_comment": "Never decrease thresholds. Agent must not edit this file.",
+  "language": "python",
+  "coverage": {
+    "line": 85,
+    "branch": 75
+  },
+  "score": {
+    "min": 8.5
+  },
+  "complexity": {
+    "warn": 10,
+    "fail": 15
+  },
+  "duplication": {
+    "warn": 3.0,
+    "fail": 5.0
+  },
+  "testCommand": "PYTHONPATH=asmr/src /Users/user/miniconda3/envs/mypy311/bin/pytest asmr/tests/unit/asmr/match -q --junitxml=.ralph/reports/junit.xml",
+  "coverageCommand": "PYTHONPATH=asmr/src /Users/user/miniconda3/envs/mypy311/bin/pytest asmr/tests/unit/asmr/match --cov=asmr/src/asmr/match --cov-branch --cov-report=json:.ralph/reports/coverage.json --cov-report=term-missing -q",
+  "lintCommand": "/Users/user/miniconda3/envs/mypy311/bin/ruff check asmr/src/asmr/match asmr/tests/unit/asmr/match",
+  "complexityCommand": "",
+  "archCommand": "",
+  "srcPath": "asmr/src/asmr/match"
+}
