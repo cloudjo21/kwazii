@@ -4,8 +4,6 @@ Mocks heavy/unavailable modules before any imports so that the full
 asmr package can be imported without GPU, kiwipiepy, or muvfde.
 """
 
-from __future__ import annotations
-
 import sys
 from unittest.mock import MagicMock
 

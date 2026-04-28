@@ -1,7 +1,5 @@
 """Unit tests for asmr.match.indexer."""
 
-from __future__ import annotations
-
 import io
 from unittest.mock import MagicMock, patch
 

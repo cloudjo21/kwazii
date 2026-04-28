@@ -9,12 +9,10 @@ Design invariants:
 - rank_batch() runs queries concurrently with asyncio.gather.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -86,8 +84,8 @@ class ImageRanker:
         text: str,
         image_urls: list[str],
         k: int | None = None,
-        aggregation_head: Optional[Any] = None,
-        query_encoder: Optional[Any] = None,
+        aggregation_head: Any | None = None,
+        query_encoder: Any | None = None,
     ) -> list[RankResult]:
         """Rank image_urls by relevance to text.
 
@@ -159,8 +157,8 @@ class ImageRanker:
         self,
         queries: list[tuple[str, list[str]]],
         k: int | None = None,
-        aggregation_head: Optional[Any] = None,
-        query_encoder: Optional[Any] = None,
+        aggregation_head: Any | None = None,
+        query_encoder: Any | None = None,
     ) -> list[list[RankResult]]:
         """Rank images for multiple queries concurrently.
 

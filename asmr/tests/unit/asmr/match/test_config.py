@@ -1,7 +1,5 @@
 """Unit tests for asmr.match.config."""
 
-from __future__ import annotations
-
 import pytest
 
 from asmr.match.config import RankerConfig

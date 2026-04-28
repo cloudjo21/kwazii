@@ -1,7 +1,5 @@
 """Unit tests for asmr.match.ranker."""
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np

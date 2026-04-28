@@ -7,8 +7,6 @@ All heavy imports (asmr.index, fde, faiss) are deferred to function bodies so
 that the module can be imported without triggering the full dependency chain.
 """
 
-from __future__ import annotations
-
 import io
 import logging
 import urllib.request
