@@ -14,8 +14,6 @@ The tests assume a JinaVera-compatible encoder is available at
 ENCODER_MODEL_PATH (defaults to "jinaai/jina-embeddings-v4").
 """
 
-from __future__ import annotations
-
 import os
 
 import numpy as np
@@ -29,9 +27,7 @@ except ImportError:
     _CUDA_AVAILABLE = False
 
 _INTEGRATION_ENABLED = os.getenv("ASMR_INTEGRATION_TESTS", "0") == "1"
-_SKIP_REASON = (
-    "GPU integration tests require CUDA and ASMR_INTEGRATION_TESTS=1"
-)
+_SKIP_REASON = "GPU integration tests require CUDA and ASMR_INTEGRATION_TESTS=1"
 
 pytestmark = pytest.mark.skipif(
     not (_CUDA_AVAILABLE and _INTEGRATION_ENABLED),
@@ -42,9 +38,7 @@ pytestmark = pytest.mark.skipif(
 # Fixtures
 # ---------------------------------------------------------------------------
 
-ENCODER_MODEL_PATH = os.getenv(
-    "ENCODER_MODEL_PATH", "jinaai/jina-embeddings-v4"
-)
+ENCODER_MODEL_PATH = os.getenv("ENCODER_MODEL_PATH", "jinaai/jina-embeddings-v4")
 
 # 20 public-domain test images (COCO-style URLs — replace with real URLs).
 _TEST_IMAGE_URLS: list[str] = [
@@ -113,9 +107,7 @@ class TestImageRankerGpuBatch:
     """GPU smoke tests for ImageRanker.rank_batch."""
 
     @pytest.mark.asyncio
-    async def test_batch_returns_results_per_query(
-        self, gpu_encoder: object
-    ) -> None:
+    async def test_batch_returns_results_per_query(self, gpu_encoder: object) -> None:
         """rank_batch returns one list per query."""
         from asmr.match import ImageRanker, RankerConfig
 
@@ -141,9 +133,7 @@ class TestImageRankerGpuWithAggregationHead:
         from asmr.match import ImageRanker, RankerConfig
         from asmr.train.aggregation import MFARFieldAdapter
 
-        head = MFARFieldAdapter(
-            query_dim=64, num_fields=1, num_scorers=1
-        ).cuda()
+        head = MFARFieldAdapter(query_dim=64, num_fields=1, num_scorers=1).cuda()
         ranker = ImageRanker(
             encoder=gpu_encoder,
             config=RankerConfig(top_k=5, device="cuda"),
