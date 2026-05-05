@@ -1,9 +1,15 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.14'",
     "python_full_version < '3.14'",
+]
+
+[manifest]
+overrides = [
+    { name = "torch", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'", specifier = "==2.6.0" },
+    { name = "torchvision", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'", specifier = ">=0.21.0" },
 ]
 
 [[package]]
@@ -17,7 +23,7 @@ dependencies = [
     { name = "psutil" },
     { name = "pyyaml" },
     { name = "safetensors" },
-    { name = "torch" },
+    { name = "torch", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/23/60/2757c4f03a8705dbf80b1268b03881927878dca5ed07d74f733fb6c219e0/accelerate-1.11.0.tar.gz", hash = "sha256:bb1caf2597b4cd632b917b5000c591d10730bb024a79746f1ee205bba80bd229", size = 393715, upload-time = "2025-10-20T14:42:25.025Z" }
 wheels = [
@@ -853,7 +859,7 @@ version = "2.8.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "einops" },
-    { name = "torch" },
+    { name = "torch", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/3b/b2/8d76c41ad7974ee264754709c22963447f7f8134613fd9ce80984ed0dab7/flash_attn-2.8.3.tar.gz", hash = "sha256:1e71dd64a9e0280e0447b8a0c2541bad4bf6ac65bdeaa2f90e51a9e57de0370d", size = 8447812, upload-time = "2025-08-15T08:28:12.911Z" }
 
@@ -2047,8 +2053,8 @@ dependencies = [
     { name = "requests" },
     { name = "ruff" },
     { name = "scipy" },
-    { name = "torch" },
-    { name = "torchvision" },
+    { name = "torch", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'" },
+    { name = "torchvision", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'" },
     { name = "tqdm" },
     { name = "transformers" },
 ]
@@ -2061,7 +2067,7 @@ flash-attn = [
 [package.dev-dependencies]
 dev = [
     { name = "pydantic" },
-    { name = "torch" },
+    { name = "torch", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'" },
     { name = "transformers" },
 ]
 
@@ -2093,8 +2099,8 @@ requires-dist = [
     { name = "requests" },
     { name = "ruff", specifier = ">=0.14.10" },
     { name = "scipy", specifier = ">=1.16.1" },
-    { name = "torch", specifier = "==2.6.0" },
-    { name = "torchvision", specifier = ">=0.21.0" },
+    { name = "torch", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'", specifier = "==2.6.0" },
+    { name = "torchvision", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'", specifier = ">=0.21.0" },
     { name = "tqdm" },
     { name = "transformers", specifier = "==4.57.1" },
 ]
@@ -2103,7 +2109,7 @@ provides-extras = ["flash-attn"]
 [package.metadata.requires-dev]
 dev = [
     { name = "pydantic", specifier = ">=2.12.3" },
-    { name = "torch", specifier = "==2.6.0" },
+    { name = "torch", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'", specifier = "==2.6.0" },
     { name = "transformers", specifier = ">=4.57.1" },
 ]
 
@@ -3122,7 +3128,7 @@ dependencies = [
     { name = "psutil" },
     { name = "pyyaml" },
     { name = "safetensors" },
-    { name = "torch" },
+    { name = "torch", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'" },
     { name = "tqdm" },
     { name = "transformers" },
 ]
@@ -4454,7 +4460,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "pillow" },
-    { name = "torch" },
+    { name = "torch", marker = "platform_machine == 'arm64' or sys_platform != 'darwin'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/4e/fe/5e193353706dab96fe73ae100d5a633ff635ce310e0d92f3bc2958d075b1/torchvision-0.21.0-1-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:7e9e9afa150e40cd2a8f0701c43cb82a8d724f512896455c0918b987f94b84a4", size = 2280711, upload-time = "2025-03-18T17:25:46.012Z" },

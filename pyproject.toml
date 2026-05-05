@@ -30,8 +30,8 @@ dependencies = [
     "requests",
     "ruff>=0.14.10",
     "scipy>=1.16.1",
-    "torch==2.6.0",
-    "torchvision>=0.21.0",
+    "torch==2.6.0; sys_platform != 'darwin' or platform_machine == 'arm64'",
+    "torchvision>=0.21.0; sys_platform != 'darwin' or platform_machine == 'arm64'",
     "tqdm",
     "transformers==4.57.1",
 ]
@@ -51,7 +51,7 @@ flash-attn = ["flash-attn>=2.5.0"]
 
 [dependency-groups]
 dev = [
-    "torch==2.6.0",
+    "torch==2.6.0; sys_platform != 'darwin' or platform_machine == 'arm64'",
     "pydantic>=2.12.3",
     "transformers>=4.57.1",
 ]
@@ -80,6 +80,12 @@ log_cli_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 log_cli_date_format = "%Y-%m-%d %H:%M:%S"
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+
+[tool.uv]
+override-dependencies = [
+    "torch==2.6.0; sys_platform != 'darwin' or platform_machine == 'arm64'",
+    "torchvision>=0.21.0; sys_platform != 'darwin' or platform_machine == 'arm64'",
+]
 
 [tool.mypy]
 python_version = "3.13"
