@@ -72,7 +72,7 @@ class ImageRanker:
 
     def __init__(
         self,
-        encoder: BaseFdeEncoder,
+        encoder: "BaseFdeEncoder",
         config: RankerConfig | None = None,
     ) -> None:
         self._encoder = encoder

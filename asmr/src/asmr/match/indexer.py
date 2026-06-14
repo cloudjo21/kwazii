@@ -14,11 +14,10 @@ from typing import TYPE_CHECKING
 
 from PIL import Image
 
-from asmr.match.config import RankerConfig
-
 if TYPE_CHECKING:
-    from asmr.retrieve.helpers import DocumentRetriever
-    from fde.base import BaseFdeEncoder
+    from asmr.match import config as match_config
+    from asmr.retrieve import helpers as retrieve_helpers
+    from fde import base as fde_base
 
 logger = logging.getLogger(__name__)
 
@@ -57,14 +56,14 @@ class CandidateImageIndexer:
     images) so the overhead of building a FlatIP FAISS index is negligible.
 
     Attributes:
-        encoder: FDE encoder used to embed candidate images.
-        config: Ranker configuration (field_name, timeout, etc.).
+        _encoder: FDE encoder used to embed candidate images.
+        _config: Ranker configuration (field_name, timeout, etc.).
     """
 
     def __init__(
         self,
-        encoder: BaseFdeEncoder,
-        config: RankerConfig,
+        encoder: "fde_base.BaseFdeEncoder",
+        config: "match_config.RankerConfig",
     ) -> None:
         self._encoder = encoder
         self._config = config
@@ -86,7 +85,7 @@ class CandidateImageIndexer:
     def build(
         self,
         image_urls: list[str],
-    ) -> tuple[DocumentRetriever, list[str]]:
+    ) -> "tuple[retrieve_helpers.DocumentRetriever, list[str]]":
         """Build an ephemeral DocumentRetriever from candidate image URLs.
 
         Steps:
@@ -108,26 +107,32 @@ class CandidateImageIndexer:
         if not image_urls:
             raise ValueError("image_urls must be non-empty")
 
-        from asmr.index.config import FieldConfig, RepresentationType, TokenizerType
-        from asmr.index.fields import DenseImageFieldIndex
-        from asmr.retrieve.helpers import DocumentRetriever
-        from asmr.retrieve.retrievers import DenseImageFieldRetriever, QueryRouter
+        from asmr.index import config as index_config
+        from asmr.index import fields as index_fields
+        from asmr.retrieve import helpers as retrieve_helpers
+        from asmr.retrieve import retrievers as retrieve_retrievers
 
         doc_ids = [f"{_DOC_ID_PREFIX}{i}" for i in range(len(image_urls))]
 
-        field_cfg = FieldConfig(
+        field_cfg = index_config.FieldConfig(
             name=self._config.field_name,
-            tokenizer_type=TokenizerType.SPLIT,
-            representation_type=RepresentationType.DENSE,
+            tokenizer_type=index_config.TokenizerType.SPLIT,
+            representation_type=index_config.RepresentationType.DENSE,
             faiss_index_path=_EPHEMERAL_PATH,
         )
 
-        img_index = DenseImageFieldIndex(config=field_cfg, encoder=self._encoder)
+        img_index = index_fields.DenseImageFieldIndex(
+            config=field_cfg, encoder=self._encoder
+        )
         images = self.load_images(image_urls)
         img_index.add_documents(doc_ids, images)
 
-        retriever_field = DenseImageFieldRetriever(field_index=img_index)
-        router = QueryRouter({self._config.field_name: retriever_field})
-        retriever = DocumentRetriever(fields_retriever=router)
+        retriever_field = retrieve_retrievers.DenseImageFieldRetriever(
+            field_index=img_index
+        )
+        router = retrieve_retrievers.QueryRouter(
+            {self._config.field_name: retriever_field}
+        )
+        retriever = retrieve_helpers.DocumentRetriever(fields_retriever=router)
 
         return retriever, doc_ids
