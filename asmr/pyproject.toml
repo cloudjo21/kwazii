@@ -16,6 +16,7 @@ train = [
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -35,3 +36,4 @@ python_files = ["test_*.py"]
 python_functions = ["test_*"]
 log_cli = true
 log_cli_level = "INFO"
+asyncio_mode = "auto"
