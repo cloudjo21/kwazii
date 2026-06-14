@@ -15,9 +15,12 @@ ENCODER_MODEL_PATH (defaults to "jinaai/jina-embeddings-v4").
 """
 
 import os
+import pathlib
+import tempfile
 
 import numpy as np
 import pytest
+from PIL import Image as PILImage
 
 try:
     import torch
@@ -40,19 +43,31 @@ pytestmark = pytest.mark.skipif(
 
 ENCODER_MODEL_PATH = os.getenv("ENCODER_MODEL_PATH", "jinaai/jina-embeddings-v4")
 
-# 20 public-domain test images (COCO-style URLs — replace with real URLs).
-_TEST_IMAGE_URLS: list[str] = [
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/4/47/"
-    "PNG_transparency_demonstration_1.png/240px-PNG_transparency_demonstration_1.png",
-] * 20  # Placeholder: same image 20× for shape/smoke testing
+_RESOURCES_DIR = pathlib.Path(__file__).parent / "resources"
+
+
+def _synthetic_image_paths(n: int = 20) -> list[str]:
+    """Return n local image paths: resource files first, then synthetic fallbacks."""
+    paths: list[str] = []
+    if _RESOURCES_DIR.exists():
+        paths = sorted(str(p) for p in _RESOURCES_DIR.glob("*.jpg"))
+    while len(paths) < n:
+        img = PILImage.new("RGB", (224, 224), color=(len(paths) * 12 % 256, 128, 64))
+        tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+        img.save(tmp.name)
+        paths.append(tmp.name)
+    return paths[:n]
+
+
+_TEST_IMAGE_URLS: list[str] = _synthetic_image_paths(20)
 
 
 @pytest.fixture(scope="module")
 def gpu_encoder():
     """Load a real FDE encoder onto GPU (module-scoped to amortise load time)."""
-    from fde.models.jinavera import JinaVeRAFdeEncoder  # type: ignore[import]
+    from fde.models.jinavera import Jinavera  # type: ignore[import]
 
-    enc = JinaVeRAFdeEncoder(encoder_model_path=ENCODER_MODEL_PATH)
+    enc = Jinavera(encoder_model_path=ENCODER_MODEL_PATH)
     enc = enc.cuda()
     yield enc
     enc.__finalize__()
@@ -133,7 +148,7 @@ class TestImageRankerGpuWithAggregationHead:
         from asmr.match import ImageRanker, RankerConfig
         from asmr.train.aggregation import MFARFieldAdapter
 
-        head = MFARFieldAdapter(query_dim=64, num_fields=1, num_scorers=1).cuda()
+        head = MFARFieldAdapter(query_dim=10240, num_fields=1, num_scorers=1).cuda()
         ranker = ImageRanker(
             encoder=gpu_encoder,
             config=RankerConfig(top_k=5, device="cuda"),
