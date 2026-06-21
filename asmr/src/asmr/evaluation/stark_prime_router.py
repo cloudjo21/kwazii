@@ -17,7 +17,7 @@ from asmr.retrieve.result import Err, Ok, Result
 from asmr.retrieve.retrievers import BaseFieldRetriever, QueryRouter
 
 if TYPE_CHECKING:
-    from asmr.evaluation.stark_prime_disk_index import (
+    from asmr.evaluation.stark_prime_disk_index_v2 import (
         PrimeDiskIndexStore,
         ShortlistTiming,
     )

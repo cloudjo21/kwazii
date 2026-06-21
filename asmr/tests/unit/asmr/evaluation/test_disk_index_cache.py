@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,14 +9,13 @@ import faiss
 import numpy as np
 import pytest
 
-from asmr.evaluation.stark_prime_disk_index import (
+from asmr.evaluation.stark_prime_disk_index_v2 import (
     FieldIndexCache,
     PrimeDiskIndexStore,
     ShortlistTiming,
     _dense_topk_faiss,
     _dense_topk_memmap,
     build_dense_faiss_field,
-    migrate_index_v21,
 )
 
 _DATA_ROOT = Path(__file__).resolve().parents[4] / "data" / "stark_prime"
@@ -94,7 +92,7 @@ class TestFieldIndexCache:
         )
         mock_index = object()
         with patch(
-            "asmr.evaluation.stark_prime_disk_index._load_sparse_field",
+            "asmr.evaluation.stark_prime_disk_index_v2._load_sparse_field",
             return_value=mock_index,
         ) as load_mock:
             first = cache.get_sparse(field)
@@ -173,32 +171,3 @@ class TestPrimeDiskIndexStoreEquivalence:
         )
         assert timing.total_ms > 0
         assert len(timing.field_timings) == len(store.field_names)
-
-
-@pytest.mark.skipif(not _HAS_INDEX, reason="STaRK-Prime index not built")
-class TestMigrateV21:
-    """Migration updates manifest to version 3."""
-
-    def test_migrate_idempotent_manifest(self, tmp_path: Path) -> None:
-        """migrate_index_v21 sets version=3 and dense_backend."""
-        manifest = json.loads((_INDEX_DIR / "manifest.json").read_text())
-        index_copy = tmp_path / "prime"
-        index_copy.mkdir()
-        (index_copy / "manifest.json").write_text(json.dumps(manifest))
-        (index_copy / "doc_ids.txt").write_text(
-            (_INDEX_DIR / "doc_ids.txt").read_text()
-        )
-        field = manifest["fields"][0]
-        slug = field.replace(" ", "_")
-        src = _INDEX_DIR / slug
-        dst = index_copy / slug
-        if src.exists():
-            import shutil
-
-            shutil.copytree(src, dst)
-
-        migrate_index_v21(index_copy)
-        updated = json.loads((index_copy / "manifest.json").read_text())
-        assert updated["version"] == 3
-        assert updated["dense_backend"] == "faiss_flat_ip"
-        assert (dst / "doc_id_mapping.marisa").exists()

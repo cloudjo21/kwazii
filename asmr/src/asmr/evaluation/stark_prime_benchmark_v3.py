@@ -16,24 +16,23 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from asmr.evaluation.metrics import hit_at_k, mean_reciprocal_rank, recall_at_k
 from asmr.evaluation.query_encoders import QueryEncoderProtocol, create_query_encoder
 from asmr.evaluation.stark_prime_benchmark import (
     MFAR_PRIME_TEST,
+    BenchmarkMetrics,
     BenchmarkReport,
 )
-from asmr.evaluation.stark_prime_benchmark_v2 import evaluate_ranked
 from asmr.datasets.stark_prime.loader import (
     PrimeQuery,
     load_prime_queries,
 )
-from asmr.evaluation.stark_prime_disk_index import (
-    ShortlistTiming,
-    is_index_built,
-    migrate_index_v21,
-)
 from asmr.evaluation.stark_prime_disk_index_v2 import (
     PrimeDiskIndexStore,
+    ShortlistTiming,
     build_prime_disk_index_v2,
+    is_index_built,
+    migrate_index_v21,
 )
 from asmr.datasets.stark_prime.query_cache import (
     QueryEmbeddingCache,
@@ -54,6 +53,8 @@ from asmr.train.stark_prime_training import (
 from asmr.train.inference import apply_aggregation_head
 
 logger = logging.getLogger(__name__)
+
+_LOG_EVERY = 100
 
 
 @dataclass
@@ -95,6 +96,38 @@ def _resolve_query_emb(
     split: str,
 ) -> np.ndarray:
     return resolve_query_emb(query, encoder, caches, split)
+
+
+def evaluate_ranked(
+    queries: list[PrimeQuery],
+    rank_fn,
+    *,
+    eval_k: int = 20,
+) -> BenchmarkMetrics:
+    t0 = time.time()
+    hits, recalls, mrrs = [], [], []
+    total = len(queries)
+    for qi, q in enumerate(queries):
+        ranked = rank_fn(q)
+        rel = {str(a) for a in q.answer_ids}
+        hits.append(hit_at_k(ranked, rel, 1))
+        recalls.append(recall_at_k(ranked, rel, 20))
+        mrrs.append(mean_reciprocal_rank(ranked, rel))
+        if (qi + 1) % _LOG_EVERY == 0 or qi + 1 == total:
+            logger.info(
+                "eval %d/%d, RSS=%.1fMB",
+                qi + 1,
+                total,
+                _rss_mb(),
+            )
+    n = max(len(hits), 1)
+    return BenchmarkMetrics(
+        hit_at_1=sum(hits) / n,
+        recall_at_20=sum(recalls) / n,
+        mrr=sum(mrrs) / n,
+        num_queries=len(queries),
+        elapsed_sec=time.time() - t0,
+    )
 
 
 def run_benchmark_v3(
