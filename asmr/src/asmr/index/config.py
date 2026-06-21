@@ -14,6 +14,11 @@ class RepresentationType(Enum):
     DENSE = "dense"
 
 
+class IndexUsage(Enum):
+    SERVING = "serving"
+    BENCHMARK = "benchmark"
+
+
 @dataclass
 class FieldConfig:
     """Configuration for field indices"""
@@ -22,7 +27,8 @@ class FieldConfig:
     tokenizer_type: TokenizerType
     representation_type: RepresentationType
     model_path: Optional[str] = None  # Required for HF_AUTO tokenizers
-    faiss_index_path: Optional[str] = None  # Required for dense fields
+    faiss_index_path: Optional[str] = None  # Required for SERVING dense fields
+    usage: IndexUsage = IndexUsage.SERVING
 
     def __post_init__(self):
         if self.tokenizer_type == TokenizerType.HF_AUTO and self.model_path is None:
@@ -31,6 +37,7 @@ class FieldConfig:
         if (
             self.representation_type == RepresentationType.DENSE
             and self.faiss_index_path is None
+            and self.usage == IndexUsage.SERVING
         ):
             raise ValueError(
                 "faiss_index_path is required when representation_type is DENSE"

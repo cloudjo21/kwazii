@@ -4,8 +4,8 @@ import os
 from typing import List, Optional
 from pathlib import Path
 
-from fde.base import BaseFdeEncoder
 from fde.config import PromptType
+from asmr.encode.protocol import TextEncoderProtocol
 from asmr.index.config import FieldConfig
 from asmr.index.models import FieldBasedRanking, FieldBasedRankingItem
 
@@ -13,7 +13,7 @@ from asmr.index.models import FieldBasedRanking, FieldBasedRankingItem
 class TextEncodingIndexer:
     """Text encoding indexer using MultiModalFdeEncoder with FAISS support"""
 
-    def __init__(self, encoder: BaseFdeEncoder, config: FieldConfig):
+    def __init__(self, encoder: TextEncoderProtocol, config: FieldConfig):
         self.encoder = encoder
         self.config = config
         self.doc_ids: List[str] = []
@@ -26,7 +26,8 @@ class TextEncodingIndexer:
     def _initialize_faiss_index(self):
         """Initialize FAISS index from config path or create new one"""
         if self.config.faiss_index_path and os.path.exists(
-                self.config.faiss_index_path):
+            self.config.faiss_index_path
+        ):
             self.load_index(self.config.faiss_index_path)
         else:
             # Will be initialized when first documents are added
@@ -67,24 +68,20 @@ class TextEncodingIndexer:
         # Keep track of doc IDs
         self.doc_ids.extend(doc_ids)
 
-    def add_document(self,
-                     doc_id: str,
-                     text: str,
-                     prompt_type: PromptType = PromptType.PASSAGE):
+    def add_document(
+        self, doc_id: str, text: str, prompt_type: PromptType = PromptType.PASSAGE
+    ):
         """Add a single document (wrapper for batch method)"""
         self.add_documents([doc_id], [text], prompt_type)
 
     def search(
-            self,
-            query: str,
-            k: int = 10,
-            prompt_type: PromptType = PromptType.QUERY) -> FieldBasedRanking:
+        self, query: str, k: int = 10, prompt_type: PromptType = PromptType.QUERY
+    ) -> FieldBasedRanking:
         """Search for similar texts"""
         if self.index is None or self.index.ntotal == 0:
-            return FieldBasedRanking(field_name=self.config.name,
-                                     query=query,
-                                     items=[],
-                                     total_retrieved=0)
+            return FieldBasedRanking(
+                field_name=self.config.name, query=query, items=[], total_retrieved=0
+            )
 
         # Encode query
         query_embedding = self.encoder.encode_text([query], prompt_type)
@@ -98,17 +95,20 @@ class TextEncodingIndexer:
 
         # Convert to results format
         ranking_items = []
-        for i, (similarity, idx) in enumerate(zip(similarities[0],
-                                                  indices[0])):
+        for i, (similarity, idx) in enumerate(zip(similarities[0], indices[0])):
             if idx != -1:  # Valid result
                 ranking_items.append(
-                    FieldBasedRankingItem(doc_id=self.doc_ids[idx],
-                                          score=float(similarity)))
+                    FieldBasedRankingItem(
+                        doc_id=self.doc_ids[idx], score=float(similarity)
+                    )
+                )
 
-        return FieldBasedRanking(field_name=self.config.name,
-                                 query=query,
-                                 items=ranking_items,
-                                 total_retrieved=len(ranking_items))
+        return FieldBasedRanking(
+            field_name=self.config.name,
+            query=query,
+            items=ranking_items,
+            total_retrieved=len(ranking_items),
+        )
 
     def save_index(self, filepath: Optional[str] = None):
         """Save the FAISS index to disk"""
@@ -116,8 +116,7 @@ class TextEncodingIndexer:
             filepath = self.config.faiss_index_path
 
         if filepath is None:
-            raise ValueError(
-                "No filepath provided and no faiss_index_path in config")
+            raise ValueError("No filepath provided and no faiss_index_path in config")
 
         # Ensure directory exists
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)

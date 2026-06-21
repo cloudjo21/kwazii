@@ -8,9 +8,9 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+import tempfile
 import numpy as np
 import torch
-from rank_bm25 import BM25Okapi
 from torch import optim
 
 from asmr.datasets.stark_mag.loader import (
@@ -28,6 +28,8 @@ from asmr.datasets.stark_prime.torch_dataset import (
     collate_stark_batch,
 )
 from asmr.evaluation.metrics import hit_at_k, mean_reciprocal_rank, recall_at_k
+from asmr.index.config import FieldConfig, IndexUsage, RepresentationType, TokenizerType
+from asmr.index.fields import DenseTextFieldIndex, SparseTextFieldIndex
 from asmr.train.aggregation import MFARFieldAdapter
 from asmr.train.config import TrainConfig
 from asmr.train.inference import apply_aggregation_head
@@ -66,12 +68,8 @@ class BenchmarkReport:
     notes: list[str]
 
 
-def _tokenize(text: str) -> list[str]:
-    return text.lower().split()
-
-
 class MagFieldIndexes:
-    """Per-field lexical BM25 and dense embedding matrices for STaRK-MAG."""
+    """Per-field BM25 and FAISS dense indexes for STaRK-MAG MFARAll."""
 
     def __init__(
         self,
@@ -84,41 +82,58 @@ class MagFieldIndexes:
         self.num_docs = len(self.doc_ids)
         self.field_names = list(MAG_FIELD_NAMES)
         self.field_mask = np.zeros((len(self.field_names), self.num_docs), dtype=bool)
-
-        self.bm25_models: list[BM25Okapi | None] = []
-        self.dense_embeddings: list[np.ndarray | None] = []
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self._sparse: list[SparseTextFieldIndex | None] = []
+        self._dense: list[DenseTextFieldIndex] = []
 
         for fi, fname in enumerate(self.field_names):
             texts = [field_text(doc, fname) for doc in corpus.documents]
             nonempty = [bool(t.strip()) for t in texts]
             self.field_mask[fi] = np.array(nonempty, dtype=bool)
-
-            tokenized = [_tokenize(t) if t.strip() else [""] for t in texts]
-            if any(nonempty):
-                self.bm25_models.append(BM25Okapi(tokenized))
-            else:
-                self.bm25_models.append(None)
-
             nonempty_texts = [t if t.strip() else fname for t in texts]
-            emb = encoder.encode(nonempty_texts, batch_size=batch_size).numpy()
-            norms = np.linalg.norm(emb, axis=1, keepdims=True)
-            self.dense_embeddings.append(
-                (emb / np.maximum(norms, 1e-12)).astype(np.float32)
+
+            sparse_cfg = FieldConfig(
+                fname, TokenizerType.SPLIT, RepresentationType.SPARSE
             )
+            sparse = SparseTextFieldIndex(sparse_cfg)
+            if any(nonempty):
+                sparse.add_documents(
+                    corpus.doc_ids,
+                    texts,
+                    index_dir=Path(self._tmpdir.name) / f"sparse_{fname}",
+                )
+                self._sparse.append(sparse)
+            else:
+                self._sparse.append(None)
+
+            dense_cfg = FieldConfig(
+                fname,
+                TokenizerType.SPLIT,
+                RepresentationType.DENSE,
+                usage=IndexUsage.BENCHMARK,
+            )
+            dense = DenseTextFieldIndex(dense_cfg, encoder)
+            dense.add_documents(corpus.doc_ids, nonempty_texts)
+            self._dense.append(dense)
 
         single_texts = [single_field_text(doc) for doc in corpus.documents]
-        self.single_bm25 = BM25Okapi([_tokenize(t) for t in single_texts])
-        single_emb = encoder.encode(single_texts, batch_size=batch_size).numpy()
-        norms = np.linalg.norm(single_emb, axis=1, keepdims=True)
-        self.single_dense = (single_emb / np.maximum(norms, 1e-12)).astype(np.float32)
-
-    def _topk(self, scores: np.ndarray, k: int) -> tuple[list[str], np.ndarray]:
-        k = min(k, scores.shape[0])
-        if k <= 0:
-            return [], np.zeros(0, dtype=np.float32)
-        top_idx = np.argpartition(-scores, k - 1)[:k]
-        top_idx = top_idx[np.argsort(-scores[top_idx])]
-        return [self.doc_ids[i] for i in top_idx], scores[top_idx].astype(np.float32)
+        single_sparse_cfg = FieldConfig(
+            "single", TokenizerType.SPLIT, RepresentationType.SPARSE
+        )
+        self._single_sparse = SparseTextFieldIndex(single_sparse_cfg)
+        self._single_sparse.add_documents(
+            corpus.doc_ids,
+            single_texts,
+            index_dir=Path(self._tmpdir.name) / "sparse_single",
+        )
+        single_dense_cfg = FieldConfig(
+            "single",
+            TokenizerType.SPLIT,
+            RepresentationType.DENSE,
+            usage=IndexUsage.BENCHMARK,
+        )
+        self._single_dense = DenseTextFieldIndex(single_dense_cfg, encoder)
+        self._single_dense.add_documents(corpus.doc_ids, single_texts)
 
     def shortlist_hybrid(
         self,
@@ -130,24 +145,18 @@ class MagFieldIndexes:
         f_num = len(self.field_names)
         union: dict[str, np.ndarray] = {}
 
-        q_tok = _tokenize(query_text)
-        q_emb = query_emb.astype(np.float32)
-
-        for fi, fname in enumerate(self.field_names):
-            if self.bm25_models[fi] is not None:
-                lex = np.array(self.bm25_models[fi].get_scores(q_tok), dtype=np.float32)
-                ids, sc = self._topk(lex, k)
-                for doc_id, score in zip(ids, sc):
-                    union.setdefault(doc_id, np.zeros((f_num, 2), dtype=np.float32))
-                    union[doc_id][fi, 0] = max(union[doc_id][fi, 0], score)
-
-            dense = self.dense_embeddings[fi]
-            if dense is not None:
-                den = dense @ q_emb
-                ids, sc = self._topk(den, k)
-                for doc_id, score in zip(ids, sc):
-                    union.setdefault(doc_id, np.zeros((f_num, 2), dtype=np.float32))
-                    union[doc_id][fi, 1] = max(union[doc_id][fi, 1], score)
+        for fi in range(f_num):
+            if self._sparse[fi] is not None:
+                for item in self._sparse[fi].search(query_text, k).items:
+                    union.setdefault(
+                        item.doc_id, np.zeros((f_num, 2), dtype=np.float32)
+                    )
+                    union[item.doc_id][fi, 0] = max(
+                        union[item.doc_id][fi, 0], item.score
+                    )
+            for item in self._dense[fi].search(query_text, k).items:
+                union.setdefault(item.doc_id, np.zeros((f_num, 2), dtype=np.float32))
+                union[item.doc_id][fi, 1] = max(union[item.doc_id][fi, 1], item.score)
 
         if not union:
             return (
@@ -173,13 +182,15 @@ class MagFieldIndexes:
         k: int,
     ) -> list[str]:
         """MFAR2-style single-field hybrid baseline."""
-        lex = np.array(
-            self.single_bm25.get_scores(_tokenize(query_text)), dtype=np.float32
-        )
-        den = self.single_dense @ query_emb.astype(np.float32)
-        hybrid = lex + den
-        ids, _ = self._topk(hybrid, k)
-        return ids
+        union: dict[str, float] = {}
+        for item in self._single_sparse.search(query_text, k).items:
+            union[item.doc_id] = union.get(item.doc_id, 0.0) + item.score
+        for item in self._single_dense.search(query_text, k).items:
+            union[item.doc_id] = union.get(item.doc_id, 0.0) + item.score
+        return sorted(union, key=lambda d: -union[d])[:k]
+
+    def close(self) -> None:
+        self._tmpdir.cleanup()
 
 
 def _example_from_shortlist(

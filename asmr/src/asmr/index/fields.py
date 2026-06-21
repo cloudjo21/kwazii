@@ -1,6 +1,7 @@
 import abc
 import numpy as np
 import logging
+from pathlib import Path
 from typing import List, Optional, Union
 from PIL import Image
 
@@ -11,6 +12,7 @@ from asmr.index.models import FieldBasedRanking, FieldBasedRankingItem
 from asmr.index.image_encoder import ImageEncodingIndexer
 from asmr.index.text_encoder import TextEncodingIndexer
 from asmr.tokenize.helpers import TokenizerWrapper
+from asmr.encode.protocol import TextEncoderProtocol
 from asmr import columnar
 from asmr import vocab
 from fde import base
@@ -27,21 +29,19 @@ class BaseFieldIndex(abc.ABC):
         self.field_name = config.name
 
     @abc.abstractmethod
-    def add_document(self, doc_id: str, content: Union[str,
-                                                       Image.Image]) -> None:
+    def add_document(self, doc_id: str, content: Union[str, Image.Image]) -> None:
         """Add a single document to the index"""
         pass
 
     @abc.abstractmethod
-    def add_documents(self, doc_ids: List[str],
-                      contents: List[Union[str, Image.Image]]) -> None:
+    def add_documents(
+        self, doc_ids: List[str], contents: List[Union[str, Image.Image]]
+    ) -> None:
         """Add multiple documents to the index (batch processing)"""
         pass
 
     @abc.abstractmethod
-    def search(self,
-               query: Union[str, Image.Image],
-               k: int = 10) -> FieldBasedRanking:
+    def search(self, query: Union[str, Image.Image], k: int = 10) -> FieldBasedRanking:
         """Search the index and return top-k results"""
         pass
 
@@ -51,8 +51,7 @@ class SparseFieldIndex(BaseFieldIndex):
 
     def __init__(self, config: FieldConfig):
         if config.representation_type != RepresentationType.SPARSE:
-            raise ValueError(
-                "SparseFieldIndex requires SPARSE representation_type")
+            raise ValueError("SparseFieldIndex requires SPARSE representation_type")
         super().__init__(config)
         self._set_tokenizer()
 
@@ -66,8 +65,7 @@ class DenseFieldIndex(BaseFieldIndex):
 
     def __init__(self, config: FieldConfig):
         if config.representation_type != RepresentationType.DENSE:
-            raise ValueError(
-                "DenseFieldIndex requires DENSE representation_type")
+            raise ValueError("DenseFieldIndex requires DENSE representation_type")
         super().__init__(config)
         self.vectors: Optional[np.ndarray] = None
         self.doc_ids: List[str] = []
@@ -92,7 +90,13 @@ class SparseTextFieldIndex(SparseFieldIndex):
         # For now, delegate to batch method
         self.add_documents([doc_id], [content])
 
-    def add_documents(self, doc_ids: List[str], contents: List[str]) -> None:
+    def add_documents(
+        self,
+        doc_ids: List[str],
+        contents: List[str],
+        *,
+        index_dir: Optional[Path] = None,
+    ) -> None:
         """Add multiple text documents to the BM25 index (batch processing)"""
         if len(doc_ids) != len(contents):
             raise ValueError("Number of doc_ids must match number of contents")
@@ -111,16 +115,15 @@ class SparseTextFieldIndex(SparseFieldIndex):
 
         # Create field-based columnar texts
         field_columnar_texts = columnar.FieldBasedColumnarTexts(
-            [{
-                self.field_name: content
-            } for content in contents],
+            [{self.field_name: content} for content in contents],
             self.field_name,
             len(contents),
         )
 
         # Build statistics
-        field_stats: columnar.ColumnarStatistics = columnar.ColumnarStatisticsBuilder.build(
-            field_columnar_texts, vocabulary)
+        field_stats: columnar.ColumnarStatistics = (
+            columnar.ColumnarStatisticsBuilder.build(field_columnar_texts, vocabulary)
+        )
 
         # Build BM25 index with doc_ids for mapping
         self.index: bm25.BM25Index = bm25.BM25Indexer.build(
@@ -129,6 +132,7 @@ class SparseTextFieldIndex(SparseFieldIndex):
             vocab=vocabulary,
             field_statistics=field_stats,
             doc_ids=doc_ids,
+            index_dir=index_dir,
         )
 
         # Get doc_id_mapping from BM25Index
@@ -146,8 +150,7 @@ class SparseTextFieldIndex(SparseFieldIndex):
             )
         hits = self.index.search_topk(terms, k)
         ranking_items = [
-            FieldBasedRankingItem(doc_id=doc_id, score=score)
-            for doc_id, score in hits
+            FieldBasedRankingItem(doc_id=doc_id, score=score) for doc_id, score in hits
         ]
         return FieldBasedRanking(
             field_name=self.field_name,
@@ -164,14 +167,13 @@ class SparseTextFieldIndex(SparseFieldIndex):
 class DenseTextFieldIndex(DenseFieldIndex):
     """Dense text field index using vector embeddings"""
 
-    def __init__(self, config: FieldConfig, encoder: base.BaseFdeEncoder):
+    def __init__(self, config: FieldConfig, encoder: TextEncoderProtocol):
         super().__init__(config)
         self.indexer = TextEncodingIndexer(encoder, config)
 
     def _encode_content(self, content: str) -> np.ndarray:
         """Encode text content to dense vector"""
-        return self.indexer.encoder.encode_text([content],
-                                                PromptType.PASSAGE)[0]
+        return self.indexer.encoder.encode_text([content], PromptType.PASSAGE)[0]
 
     def add_document(self, doc_id: str, content: str) -> None:
         """Add a single text document to the dense index"""
@@ -191,10 +193,12 @@ class DenseTextFieldIndex(DenseFieldIndex):
             for doc_id, score in results
         ]
 
-        return FieldBasedRanking(field_name=self.field_name,
-                                 query=query,
-                                 items=ranking_items,
-                                 total_retrieved=len(results))
+        return FieldBasedRanking(
+            field_name=self.field_name,
+            query=query,
+            items=ranking_items,
+            total_retrieved=len(results),
+        )
 
     def save_index(self):
         """Save the index to the configured path"""
@@ -216,19 +220,17 @@ class DenseImageFieldIndex(DenseFieldIndex):
         """Encode image content to dense vector"""
         return self.indexer.encoder.encode_image([content])[0]
 
-    def add_document(self, doc_id: str, content: Union[str,
-                                                       Image.Image]) -> None:
+    def add_document(self, doc_id: str, content: Union[str, Image.Image]) -> None:
         """Add a single image document to the dense index"""
         self.indexer.add_document(doc_id, content)
 
-    def add_documents(self, doc_ids: List[str],
-                      contents: List[Union[str, Image.Image]]) -> None:
+    def add_documents(
+        self, doc_ids: List[str], contents: List[Union[str, Image.Image]]
+    ) -> None:
         """Add multiple image documents to the dense index (batch processing)"""
         self.indexer.add_documents(doc_ids, contents)
 
-    def search(self,
-               query: Union[str, Image.Image],
-               k: int = 10) -> FieldBasedRanking:
+    def search(self, query: Union[str, Image.Image], k: int = 10) -> FieldBasedRanking:
         """Search using vector similarity"""
         if isinstance(query, str):
             # Text-to-image search
@@ -245,10 +247,12 @@ class DenseImageFieldIndex(DenseFieldIndex):
             for doc_id, score in results
         ]
 
-        return FieldBasedRanking(field_name=self.field_name,
-                                 query=query_str,
-                                 items=ranking_items,
-                                 total_retrieved=len(results))
+        return FieldBasedRanking(
+            field_name=self.field_name,
+            query=query_str,
+            items=ranking_items,
+            total_retrieved=len(results),
+        )
 
     def save_index(self):
         """Save the index to the configured path"""
@@ -260,7 +264,6 @@ class DenseImageFieldIndex(DenseFieldIndex):
 
 
 class DocumentIndex:
-
     def __init__(self):
         self.field_indices: dict[str, BaseFieldIndex] = dict()
 
