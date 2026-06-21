@@ -3,38 +3,20 @@
 import argparse
 import json
 import logging
-import random
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-import tempfile
 import numpy as np
 import torch
-from torch import optim
 
-from asmr.datasets.stark_mag.loader import (
-    MAG_FIELD_NAMES,
-    MagCorpus,
-    MagQuery,
-    build_mag_corpus,
-    field_text,
-    load_mag_queries,
-    single_field_text,
-)
-from asmr.datasets.stark_prime.torch_dataset import (
-    StarkRankingDataset,
-    StarkRankingExample,
-    collate_stark_batch,
-)
+from asmr.datasets.stark_mag.loader import MagQuery, build_mag_corpus, load_mag_queries
 from asmr.evaluation.metrics import hit_at_k, mean_reciprocal_rank, recall_at_k
-from asmr.index.config import FieldConfig, IndexUsage, RepresentationType, TokenizerType
-from asmr.index.fields import DenseTextFieldIndex, SparseTextFieldIndex
-from asmr.train.aggregation import MFARFieldAdapter
-from asmr.train.config import TrainConfig
+from asmr.evaluation.stark_mag_indexes import MagFieldIndexes
+from asmr.train.config import TrainMfarConfig
 from asmr.train.inference import apply_aggregation_head
 from asmr.train.query_encoder import HfQueryEncoder
-from asmr.train.trainer import AggregationTrainer
+from asmr.train.stark_mag_training import train_mfar_mag
 
 logger = logging.getLogger(__name__)
 
@@ -66,195 +48,6 @@ class BenchmarkReport:
     mfar_paper_test: dict[str, dict[str, float]]
     ratio_vs_mfar_mfarall: dict[str, float]
     notes: list[str]
-
-
-class MagFieldIndexes:
-    """Per-field BM25 and FAISS dense indexes for STaRK-MAG MFARAll."""
-
-    def __init__(
-        self,
-        corpus: MagCorpus,
-        encoder: HfQueryEncoder,
-        batch_size: int = 64,
-    ) -> None:
-        self.doc_ids = corpus.doc_ids
-        self.id_to_col = {d: i for i, d in enumerate(self.doc_ids)}
-        self.num_docs = len(self.doc_ids)
-        self.field_names = list(MAG_FIELD_NAMES)
-        self.field_mask = np.zeros((len(self.field_names), self.num_docs), dtype=bool)
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self._sparse: list[SparseTextFieldIndex | None] = []
-        self._dense: list[DenseTextFieldIndex] = []
-
-        for fi, fname in enumerate(self.field_names):
-            texts = [field_text(doc, fname) for doc in corpus.documents]
-            nonempty = [bool(t.strip()) for t in texts]
-            self.field_mask[fi] = np.array(nonempty, dtype=bool)
-            nonempty_texts = [t if t.strip() else fname for t in texts]
-
-            sparse_cfg = FieldConfig(
-                fname, TokenizerType.SPLIT, RepresentationType.SPARSE
-            )
-            sparse = SparseTextFieldIndex(sparse_cfg)
-            if any(nonempty):
-                sparse.add_documents(
-                    corpus.doc_ids,
-                    texts,
-                    index_dir=Path(self._tmpdir.name) / f"sparse_{fname}",
-                )
-                self._sparse.append(sparse)
-            else:
-                self._sparse.append(None)
-
-            dense_cfg = FieldConfig(
-                fname,
-                TokenizerType.SPLIT,
-                RepresentationType.DENSE,
-                usage=IndexUsage.BENCHMARK,
-            )
-            dense = DenseTextFieldIndex(dense_cfg, encoder)
-            dense.add_documents(corpus.doc_ids, nonempty_texts)
-            self._dense.append(dense)
-
-        single_texts = [single_field_text(doc) for doc in corpus.documents]
-        single_sparse_cfg = FieldConfig(
-            "single", TokenizerType.SPLIT, RepresentationType.SPARSE
-        )
-        self._single_sparse = SparseTextFieldIndex(single_sparse_cfg)
-        self._single_sparse.add_documents(
-            corpus.doc_ids,
-            single_texts,
-            index_dir=Path(self._tmpdir.name) / "sparse_single",
-        )
-        single_dense_cfg = FieldConfig(
-            "single",
-            TokenizerType.SPLIT,
-            RepresentationType.DENSE,
-            usage=IndexUsage.BENCHMARK,
-        )
-        self._single_dense = DenseTextFieldIndex(single_dense_cfg, encoder)
-        self._single_dense.add_documents(corpus.doc_ids, single_texts)
-
-    def shortlist_hybrid(
-        self,
-        query_text: str,
-        query_emb: np.ndarray,
-        k: int,
-    ) -> tuple[list[str], np.ndarray, np.ndarray]:
-        """Build MFARAll shortlist: union of per-field top-k (lex + dense)."""
-        f_num = len(self.field_names)
-        union: dict[str, np.ndarray] = {}
-
-        for fi in range(f_num):
-            if self._sparse[fi] is not None:
-                for item in self._sparse[fi].search(query_text, k).items:
-                    union.setdefault(
-                        item.doc_id, np.zeros((f_num, 2), dtype=np.float32)
-                    )
-                    union[item.doc_id][fi, 0] = max(
-                        union[item.doc_id][fi, 0], item.score
-                    )
-            for item in self._dense[fi].search(query_text, k).items:
-                union.setdefault(item.doc_id, np.zeros((f_num, 2), dtype=np.float32))
-                union[item.doc_id][fi, 1] = max(union[item.doc_id][fi, 1], item.score)
-
-        if not union:
-            return (
-                [],
-                np.zeros((f_num, 2, 0), dtype=np.float32),
-                np.zeros((f_num, 0), dtype=bool),
-            )
-
-        doc_ids = sorted(union.keys())
-        d_num = len(doc_ids)
-        scores = np.zeros((f_num, 2, d_num), dtype=np.float32)
-        mask = np.zeros((f_num, d_num), dtype=bool)
-        for di, doc_id in enumerate(doc_ids):
-            scores[:, :, di] = union[doc_id]
-            col = self.id_to_col[doc_id]
-            mask[:, di] = self.field_mask[:, col]
-        return doc_ids, scores, mask
-
-    def rank_single_hybrid(
-        self,
-        query_text: str,
-        query_emb: np.ndarray,
-        k: int,
-    ) -> list[str]:
-        """MFAR2-style single-field hybrid baseline."""
-        union: dict[str, float] = {}
-        for item in self._single_sparse.search(query_text, k).items:
-            union[item.doc_id] = union.get(item.doc_id, 0.0) + item.score
-        for item in self._single_dense.search(query_text, k).items:
-            union[item.doc_id] = union.get(item.doc_id, 0.0) + item.score
-        return sorted(union, key=lambda d: -union[d])[:k]
-
-    def close(self) -> None:
-        self._tmpdir.cleanup()
-
-
-def _example_from_shortlist(
-    query: MagQuery,
-    doc_ids: list[str],
-    scores: np.ndarray,
-    mask: np.ndarray,
-) -> StarkRankingExample:
-    rel = np.zeros(len(doc_ids), dtype=np.float32)
-    ans = {str(a) for a in query.answer_ids}
-    for i, doc_id in enumerate(doc_ids):
-        if doc_id in ans:
-            rel[i] = 1.0
-    return StarkRankingExample(
-        query_text=query.query,
-        doc_ids=doc_ids,
-        scores=scores,
-        relevance=rel,
-        field_mask=mask,
-    )
-
-
-def train_mag_adapter(
-    train_queries: list[MagQuery],
-    indexes: MagFieldIndexes,
-    encoder: HfQueryEncoder,
-    *,
-    shortlist_k: int,
-    epochs: int,
-    lr: float,
-    device: torch.device,
-) -> MFARFieldAdapter:
-    f_num = len(MAG_FIELD_NAMES)
-    model = MFARFieldAdapter(encoder.embedding_dim, f_num, 2).to(device)
-    cfg = TrainConfig(query_dim=encoder.embedding_dim)
-    trainer = AggregationTrainer(model, cfg)
-    opt = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-2)
-
-    examples: list[StarkRankingExample] = []
-    for q in train_queries:
-        q_emb = encoder.encode([q.query])[0].numpy()
-        doc_ids, scores, mask = indexes.shortlist_hybrid(q.query, q_emb, shortlist_k)
-        if not doc_ids:
-            continue
-        examples.append(_example_from_shortlist(q, doc_ids, scores, mask))
-
-    ds = StarkRankingDataset(examples)
-    indices = list(range(len(ds)))
-    logger.info("Training MFARFieldAdapter on %d MAG shortlists", len(ds))
-
-    for epoch in range(1, epochs + 1):
-        random.shuffle(indices)
-        loss_sum = 0.0
-        for idx in indices:
-            batch = collate_stark_batch([ds[idx]], encoder, device)
-            opt.zero_grad()
-            out = trainer.training_step(batch)
-            out.loss.backward()
-            opt.step()
-            loss_sum += out.loss.item()
-        logger.info(
-            "Epoch %d/%d loss=%.4f", epoch, epochs, loss_sum / max(len(indices), 1)
-        )
-    return model
 
 
 def evaluate_ranked(
@@ -292,7 +85,10 @@ def run_benchmark(
     max_eval_queries: int = -1,
     eval_k: int = 20,
     seed: int = 42,
+    cache_dir: Path | None = None,
 ) -> BenchmarkReport:
+    import random
+
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -301,9 +97,7 @@ def run_benchmark(
     logger.info("Device: %s", device)
 
     corpus = build_mag_corpus(data_root, max_docs=max_docs)
-    logger.info(
-        "MAG corpus: %d docs, %d fields", len(corpus.doc_ids), len(MAG_FIELD_NAMES)
-    )
+    logger.info("MAG corpus: %d docs", len(corpus.doc_ids))
 
     encoder = HfQueryEncoder(model_name=encoder_name, device=str(device))
     indexes = MagFieldIndexes(corpus, encoder)
@@ -315,14 +109,19 @@ def run_benchmark(
     if max_eval_queries > 0:
         test_queries = test_queries[:max_eval_queries]
 
-    adapter = train_mag_adapter(
+    cfg = TrainMfarConfig(
+        shortlist_k=shortlist_k,
+        epochs=train_epochs,
+        adapter_lr=1e-3,
+    )
+    adapter = train_mfar_mag(
         train_queries,
         indexes,
         encoder,
-        shortlist_k=shortlist_k,
-        epochs=train_epochs,
-        lr=1e-3,
-        device=device,
+        cfg,
+        device,
+        cache_dir=cache_dir,
+        encoder_name=encoder_name,
     )
 
     def rank_mfar_all(q: MagQuery) -> list[str]:
@@ -341,13 +140,14 @@ def run_benchmark(
         return [str(x) for x in sorted_ids[:eval_k]]
 
     metrics = evaluate_ranked(test_queries, rank_mfar_all, eval_k=eval_k)
+    indexes.close()
 
     paper = MFAR_MAG_TEST["MFARAll"]
     ratio = {
         "hit@1": metrics.hit_at_1 / paper["hit@1"] if paper["hit@1"] else 0.0,
-        "recall@20": metrics.recall_at_20 / paper["recall@20"]
-        if paper["recall@20"]
-        else 0.0,
+        "recall@20": (
+            metrics.recall_at_20 / paper["recall@20"] if paper["recall@20"] else 0.0
+        ),
         "mrr": metrics.mrr / paper["mrr"] if paper["mrr"] else 0.0,
     }
 
@@ -392,6 +192,7 @@ def main() -> None:
     parser.add_argument("--max-train-queries", type=int, default=-1)
     parser.add_argument("--max-eval-queries", type=int, default=-1)
     parser.add_argument("--eval-k", type=int, default=20)
+    parser.add_argument("--cache-dir", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
 
@@ -404,6 +205,7 @@ def main() -> None:
         max_train_queries=args.max_train_queries,
         max_eval_queries=args.max_eval_queries,
         eval_k=args.eval_k,
+        cache_dir=args.cache_dir,
     )
 
     payload = {
