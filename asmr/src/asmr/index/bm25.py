@@ -1,11 +1,13 @@
 import enum
 import json
 import os
+from collections import defaultdict
+from pathlib import Path
 from typing import Iterable
 
+import marisa_trie
 import numpy as np
 from scipy.sparse import csc_matrix
-import marisa_trie
 
 from asmr import columnar
 from asmr import vocab
@@ -16,6 +18,7 @@ _INDEX_FILE = "indices.bin"
 _DATA_FILE = "data.bin"
 _INDEX_POINTER_FILE = "indptr.npy"
 _METADATA_FILE = "metadata.json"
+_DOC_ID_MAPPING_FILE = "doc_id_mapping.marisa"
 
 
 class TermScore:
@@ -128,6 +131,75 @@ class BM25Index:
                 term_scores.append(term_score)
         return DocumentScore(self.field_name, doc_id, term_scores)
 
+    def search_topk(self, terms: list[str], k: int) -> list[tuple[str, float]]:
+        """Return top-k (doc_id, score) by traversing CSC postings for query terms.
+
+        Uses column-oriented posting lists (term → docs) instead of scanning all
+        documents. Requires ``doc_id_mapping`` for string doc ids.
+
+        Args:
+            terms: Tokenized query terms.
+            k: Maximum hits to return.
+
+        Returns:
+            List of (doc_id, score) pairs sorted by score descending.
+
+        Raises:
+            ValueError: When doc_id_mapping is missing.
+        """
+        if self.doc_id_mapping is None:
+            raise ValueError("BM25 index missing doc_id_mapping")
+        if k <= 0 or not terms:
+            return []
+
+        trie = self.vocab.trie
+        indptr = self.index.indptr
+        indices = self.index.indices
+        data = self.index.data
+
+        accum: dict[int, float] = defaultdict(float)
+        for term in terms:
+            if term not in trie:
+                continue
+            term_id = trie[term]
+            start = int(indptr[term_id])
+            end = int(indptr[term_id + 1])
+            for pos in range(start, end):
+                doc_pos = int(indices[pos])
+                accum[doc_pos] += float(data[pos])
+
+        if not accum:
+            return []
+
+        ranked = sorted(accum.items(), key=lambda item: item[1], reverse=True)
+        top = ranked[: min(k, len(ranked))]
+        mapping = self.doc_id_mapping
+        return [(mapping.get_doc_id(doc_pos), score) for doc_pos, score in top]
+
+
+def _resolve_index_dir(index_dir: str | Path | None) -> str:
+    if index_dir is None:
+        return _INDEX_DIR
+    return str(index_dir)
+
+
+def _save_doc_id_mapping(
+    mapping: DocumentIndexToIdMapping,
+    index_dir: str,
+) -> None:
+    path = os.path.join(index_dir, _DOC_ID_MAPPING_FILE)
+    os.makedirs(index_dir, exist_ok=True)
+    mapping.mapping.save(path)
+
+
+def _load_doc_id_mapping(index_dir: str) -> DocumentIndexToIdMapping | None:
+    path = os.path.join(index_dir, _DOC_ID_MAPPING_FILE)
+    if not os.path.exists(path):
+        return None
+    trie = marisa_trie.BytesTrie()
+    trie.load(path)
+    return DocumentIndexToIdMapping(trie, DocIdPostingPolicy.UNIQUE)
+
 
 class BM25Indexer:
     @classmethod
@@ -138,12 +210,15 @@ class BM25Indexer:
         vocab: vocab.Vocabulary,
         field_statistics: columnar.ColumnarStatistics,
         doc_ids: Iterable[str] = None,
+        *,
+        index_dir: str | Path | None = None,
     ) -> BM25Index:
-        os.makedirs(_INDEX_DIR, exist_ok=True)
-        index_filepath = os.path.join(_INDEX_DIR, _INDEX_FILE)
-        data_filepath = os.path.join(_INDEX_DIR, _DATA_FILE)
-        pointer_filepath = os.path.join(_INDEX_DIR, _INDEX_POINTER_FILE)
-        metadata_filepath = os.path.join(_INDEX_DIR, _METADATA_FILE)
+        resolved_dir = _resolve_index_dir(index_dir)
+        os.makedirs(resolved_dir, exist_ok=True)
+        index_filepath = os.path.join(resolved_dir, _INDEX_FILE)
+        data_filepath = os.path.join(resolved_dir, _DATA_FILE)
+        pointer_filepath = os.path.join(resolved_dir, _INDEX_POINTER_FILE)
+        metadata_filepath = os.path.join(resolved_dir, _METADATA_FILE)
 
         k1, b = 1.5, 0.75  # BM25 parameters
         n_docs = field_statistics.n_docs
@@ -213,6 +288,9 @@ class BM25Indexer:
         with open(metadata_filepath, "w") as f:
             json.dump(metadata, f)
 
+        if doc_id_mapping is not None:
+            _save_doc_id_mapping(doc_id_mapping, resolved_dir)
+
         return BM25Index(
             field_name=field_name,
             index=index,
@@ -221,12 +299,19 @@ class BM25Indexer:
         )
 
     @classmethod
-    def load(cls, field_name: str, vocab: vocab.Vocabulary) -> BM25Index:
+    def load(
+        cls,
+        field_name: str,
+        vocab: vocab.Vocabulary,
+        *,
+        index_dir: str | Path | None = None,
+    ) -> BM25Index:
         """Load a previously built BM25 index from disk files."""
-        index_filepath = os.path.join(_INDEX_DIR, _INDEX_FILE)
-        data_filepath = os.path.join(_INDEX_DIR, _DATA_FILE)
-        pointer_filepath = os.path.join(_INDEX_DIR, _INDEX_POINTER_FILE)
-        metadata_filepath = os.path.join(_INDEX_DIR, _METADATA_FILE)
+        resolved_dir = _resolve_index_dir(index_dir)
+        index_filepath = os.path.join(resolved_dir, _INDEX_FILE)
+        data_filepath = os.path.join(resolved_dir, _DATA_FILE)
+        pointer_filepath = os.path.join(resolved_dir, _INDEX_POINTER_FILE)
+        metadata_filepath = os.path.join(resolved_dir, _METADATA_FILE)
 
         # Check if all required files exist
         if not all(
@@ -263,8 +348,10 @@ class BM25Indexer:
         # Reconstruct CSC matrix
         index = csc_matrix((data, indices, indptr), shape=(n_docs, n_vocab))
 
-        # Note: doc_id_mapping is not persisted in current implementation
-        # It would need to be stored and loaded if persistence is required
+        doc_id_mapping = _load_doc_id_mapping(resolved_dir)
         return BM25Index(
-            field_name=field_name, index=index, vocab=vocab, doc_id_mapping=None
+            field_name=field_name,
+            index=index,
+            vocab=vocab,
+            doc_id_mapping=doc_id_mapping,
         )

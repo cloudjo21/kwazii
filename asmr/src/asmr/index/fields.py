@@ -135,34 +135,26 @@ class SparseTextFieldIndex(SparseFieldIndex):
         self.doc_id_mapping = self.index.doc_id_mapping
 
     def search(self, query: str, k: int = 10) -> FieldBasedRanking:
-        """Search using BM25 scoring"""
+        """Search using BM25 scoring via CSC posting traversal."""
         terms = self.tokenizer.tokenize(query)
-        scores: list[tuple[str, float]] = []
-        logger.debug(f"Searching BM25 index shaped as {self.index.index.shape}")
-        # TODO: search top-k ranking with terms, and have to return document_id of FieldIndex typed str in ranking
-        for doc_pos in range(self.index.index.shape[0]):
-            doc_score = self.index.get_score(doc_pos, terms)
-            logger.debug(
-                f"Doc Position: {doc_pos}, Term Scores: {[(ts.term, ts.score) for ts in doc_score.term_scores]}"
+        if self.index is None:
+            return FieldBasedRanking(
+                field_name=self.field_name,
+                query=query,
+                items=[],
+                total_retrieved=0,
             )
-            total_score = sum(ts.score for ts in doc_score.term_scores)
-            if total_score > 0:
-                # Convert int doc_id to str doc_id using mapping
-                doc_id = self._get_doc_id(doc_pos)
-                scores.append((doc_id, total_score))
-        # Sort by score descending
-        scores.sort(key=lambda x: x[1], reverse=True)
-
-        # Create FieldBasedRanking items
+        hits = self.index.search_topk(terms, k)
         ranking_items = [
             FieldBasedRankingItem(doc_id=doc_id, score=score)
-            for doc_id, score in scores[:k]
+            for doc_id, score in hits
         ]
-
-        return FieldBasedRanking(field_name=self.field_name,
-                                 query=query,
-                                 items=ranking_items,
-                                 total_retrieved=len(scores))
+        return FieldBasedRanking(
+            field_name=self.field_name,
+            query=query,
+            items=ranking_items,
+            total_retrieved=len(ranking_items),
+        )
 
     def _get_doc_id(self, doc_pos: int) -> str:
         """Convert integer doc_id to string doc_id using mapping"""

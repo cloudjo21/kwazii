@@ -1,5 +1,4 @@
-import pytest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
 
 class TestPromptType:
@@ -130,3 +129,14 @@ class TestFdeConfig:
         cfg.update_config(mock_muvfde_config)
 
         mock_muvfde_config.set_final_projection_dimension.assert_not_called()
+
+    def test_apply_with_fde_output_dim_sets_final_projection(self):
+        """apply_with_fde_output_dim wires final_projection into muvfde config."""
+        import numpy as np
+        import muvfde
+        from fde.config import FdeConfig, PromptType
+
+        cfg = FdeConfig.apply_with_fde_output_dim(PromptType.PASSAGE, 256)
+        multivector = np.random.randn(6, 32).astype(np.float32)
+        out = muvfde.generate_fixed_dimensional_encoding(multivector, cfg)
+        assert out.shape == (256,)
