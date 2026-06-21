@@ -13,7 +13,7 @@ from torch import optim
 
 from asmr.train.aggregation import AggregationHead, MFARFieldAdapter
 from asmr.train.config import TrainConfig
-from asmr.train.data_stark import (
+from asmr.datasets.stark_prime.torch_dataset import (
     StarkRankingDataset,
     StarkRankingExample,
     collate_stark_batch,

@@ -26,9 +26,14 @@ def _derive_query_embedding(
     query_encoder: Any,
 ) -> np.ndarray:
     """Extract a float32 embedding vector from query via query_encoder."""
-    import torch as _torch
+    from fde.config import PromptType
 
     text = query if isinstance(query, str) else query.get_text()
+    if hasattr(query_encoder, "encode_text"):
+        emb = query_encoder.encode_text(text, PromptType.QUERY)
+        return np.asarray(emb[0] if emb.ndim == 2 else emb, dtype=np.float32)
+    import torch as _torch
+
     enc = query_encoder.encode([text])
     if isinstance(enc, _torch.Tensor):
         return enc[0].detach().cpu().float().numpy()

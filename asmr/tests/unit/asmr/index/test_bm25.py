@@ -153,16 +153,66 @@ class TestBM25Indexer:
     def test_bm25_index_persistence(self, tmp_path, monkeypatch):
         monkeypatch.setattr(bm25_module, "_INDEX_DIR", str(tmp_path))
         texts = ["hello world", "world hello"]
+        doc_ids = ["doc_a", "doc_b"]
         vocabulary = make_vocabulary(texts)
         docs = [{"content": t} for t in texts]
         field_texts = FieldBasedColumnarTexts(docs, "content", len(docs))
         stats = ColumnarStatisticsBuilder.build(field_texts, vocabulary)
 
-        BM25Indexer.build("content", texts, vocabulary, stats)
-        loaded = BM25Indexer.load("content", vocabulary)
+        BM25Indexer.build(
+            "content",
+            texts,
+            vocabulary,
+            stats,
+            doc_ids=doc_ids,
+            index_dir=tmp_path,
+        )
+        loaded = BM25Indexer.load("content", vocabulary, index_dir=tmp_path)
 
         assert isinstance(loaded, BM25Index)
         assert loaded.index.shape == (len(texts), len(vocabulary))
+        assert loaded.doc_id_mapping is not None
+        assert loaded.doc_id_mapping.get_doc_id(0) == "doc_a"
+
+    def test_bm25_index_search_topk_matches_brute_force(self):
+        texts = [
+            "alpha beta gamma",
+            "beta delta",
+            "gamma epsilon",
+            "alpha delta epsilon",
+        ]
+        doc_ids = [f"doc_{i}" for i in range(len(texts))]
+        vocabulary = make_vocabulary(texts)
+        mat = np.zeros((len(texts), len(vocabulary)), dtype=np.float32)
+        for doc_pos, text in enumerate(texts):
+            for token in text.lower().split():
+                if token in vocabulary:
+                    mat[doc_pos, vocabulary.id(token)] += 1.0 + doc_pos * 0.1
+
+        mapping = DocumentIndexToIdMapping.build(
+            enumerate(doc_ids),
+            DocIdPostingPolicy.UNIQUE,
+        )
+        index = BM25Index("content", csc_matrix(mat), vocabulary, mapping)
+
+        queries = [
+            ["alpha"],
+            ["beta", "gamma"],
+            ["epsilon"],
+            ["missing"],
+        ]
+        for terms in queries:
+            k = 3
+            topk_ids = {doc_id for doc_id, _ in index.search_topk(terms, k)}
+            brute: list[tuple[str, float]] = []
+            for doc_pos in range(index.index.shape[0]):
+                doc_score = index.get_score(doc_pos, terms)
+                total = sum(ts.score for ts in doc_score.term_scores)
+                if total > 0:
+                    brute.append((mapping.get_doc_id(doc_pos), total))
+            brute.sort(key=lambda item: item[1], reverse=True)
+            brute_ids = {doc_id for doc_id, _ in brute[:k]}
+            assert topk_ids == brute_ids
 
     def test_bm25_indexer_load_missing_files_raises(self, tmp_path, monkeypatch):
         monkeypatch.setattr(bm25_module, "_INDEX_DIR", str(tmp_path))

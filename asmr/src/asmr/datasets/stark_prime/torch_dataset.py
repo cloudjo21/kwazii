@@ -1,12 +1,9 @@
 """STaRK-oriented dataset and batching (§13.3)."""
 
-from __future__ import annotations
-
 import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 import numpy as np
 import numpy.typing as npt
@@ -14,15 +11,12 @@ import torch
 from torch import Tensor
 from torch.utils.data import Dataset
 
+from asmr.datasets.stark_prime.loader import PrimeQuery
+from asmr.encode.protocol import TrainableTextEncoderProtocol, encode_text_as_tensor
 from asmr.train.data import RankingBatch
+from fde.config import PromptType
 
 logger = logging.getLogger(__name__)
-
-
-class SupportsQueryEncode(Protocol):
-    """Anything with ``encode(texts) -> [B,H]`` (e.g. HfQueryEncoder)."""
-
-    def encode(self, texts: list[str]) -> Tensor: ...
 
 
 @dataclass
@@ -102,8 +96,10 @@ class StarkRankingDataset(Dataset[StarkRankingExample]):
 
 def collate_stark_batch(
     batch: list[StarkRankingExample],
-    query_encoder: SupportsQueryEncode,
+    query_encoder: TrainableTextEncoderProtocol | object,
     device: torch.device,
+    *,
+    train_encoder: bool = False,
 ) -> RankingBatch:
     """Batch size 1 only (variable shortlist width D)."""
     if len(batch) != 1:
@@ -130,7 +126,22 @@ def collate_stark_batch(
 
     rel = torch.from_numpy(np.asarray(ex.relevance)).float().unsqueeze(0).to(device)
 
-    q_emb = query_encoder.encode([ex.query_text]).to(device)
+    if train_encoder and isinstance(query_encoder, TrainableTextEncoderProtocol):
+        q_emb = query_encoder.encode_trainable(
+            [ex.query_text],
+            PromptType.QUERY,
+        ).to(device)
+    elif hasattr(query_encoder, "encode_text"):
+        q_emb = encode_text_as_tensor(
+            query_encoder,
+            [ex.query_text],
+            PromptType.QUERY,
+        ).to(device)
+    elif hasattr(query_encoder, "encode"):
+        q_emb = query_encoder.encode([ex.query_text]).to(device)
+    else:
+        msg = "query_encoder must implement encode_text or encode"
+        raise TypeError(msg)
 
     return RankingBatch(
         scores=scores_t,
@@ -138,4 +149,24 @@ def collate_stark_batch(
         query_emb=q_emb,
         relevance=rel,
         aux=None,
+    )
+
+
+def _example_from_shortlist(
+    query: PrimeQuery,
+    doc_ids: list[str],
+    scores: np.ndarray,
+    mask: np.ndarray,
+) -> StarkRankingExample:
+    rel = np.zeros(len(doc_ids), dtype=np.float32)
+    ans = {str(a) for a in query.answer_ids}
+    for i, doc_id in enumerate(doc_ids):
+        if doc_id in ans:
+            rel[i] = 1.0
+    return StarkRankingExample(
+        query_text=query.query,
+        doc_ids=doc_ids,
+        scores=scores,
+        relevance=rel,
+        field_mask=mask,
     )
