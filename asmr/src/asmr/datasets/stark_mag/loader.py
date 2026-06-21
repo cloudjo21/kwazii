@@ -40,6 +40,12 @@ def field_text(document: dict[str, Any], field_name: str) -> str:
     return _field_text(document, field_name)
 
 
+def single_field_text(document: dict[str, Any]) -> str:
+    """Concatenate all MAG fields (mFAR single / MFAR2 baseline)."""
+    chunks = [field_text(document, f) for f in MAG_FIELD_NAMES]
+    return "\n".join(c for c in chunks if c)
+
+
 def build_mag_corpus(data_root: Path, max_docs: int = -1) -> MagCorpus:
     """Load MAG corpus from JSON and return MagCorpus.
 
