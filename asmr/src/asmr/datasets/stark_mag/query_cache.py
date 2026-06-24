@@ -1,11 +1,4 @@
-"""STaRK-Prime query cache — thin wrapper over asmr.datasets.query_cache.
-
-Re-exports the generic symbols so existing callers keep working unchanged:
-    from asmr.datasets.stark_prime.query_cache import (
-        QueryEmbeddingCache, resolve_query_emb, load_query_caches,
-        build_query_emb_cache,  # Prime-specific wrapper
-    )
-"""
+"""STaRK-MAG query cache — thin wrapper over asmr.datasets.query_cache."""
 
 import argparse
 import logging
@@ -24,14 +17,14 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "QueryEmbeddingCache",
-    "build_query_emb_cache",
+    "build_mag_query_emb_cache",
     "is_query_cache_built",
     "load_query_caches",
     "resolve_query_emb",
 ]
 
 
-def build_query_emb_cache(
+def build_mag_query_emb_cache(
     data_root: Path,
     split: str,
     encoder: NamedTextEncoderProtocol,
@@ -40,10 +33,10 @@ def build_query_emb_cache(
     batch_size: int = 64,
     force: bool = False,
 ) -> tuple[Path, Path]:
-    """Prime-specific builder: loads Prime queries then delegates to shared cache builder."""
-    from asmr.datasets.stark_prime.loader import load_prime_queries
+    """MAG-specific builder: loads MAG queries then delegates to shared cache builder."""
+    from asmr.datasets.stark_mag.loader import load_mag_queries
 
-    queries = load_prime_queries(data_root, split)
+    queries = load_mag_queries(data_root, split)
     return _build_shared(
         queries, encoder, cache_dir, split, batch_size=batch_size, force=force
     )
@@ -55,25 +48,23 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(message)s",
     )
     parser = argparse.ArgumentParser(
-        description="Build STaRK-Prime query embedding cache",
+        description="Build STaRK-MAG query embedding cache",
     )
-    parser.add_argument("--data-root", type=Path, default=Path("data/stark_prime"))
-    parser.add_argument(
-        "--cache-dir", type=Path, default=Path("data/stark_prime/cache")
-    )
+    parser.add_argument("--data-root", type=Path, default=Path("data/stark_mag"))
+    parser.add_argument("--cache-dir", type=Path, default=Path("data/stark_mag/cache"))
     parser.add_argument(
         "--splits", default="train,test", help="Comma-separated splits to cache"
     )
-    parser.add_argument("--encoder", default="jinavera")
+    parser.add_argument("--encoder", default="facebook/contriever-msmarco")
     parser.add_argument("--batch-size", type=int, default=64)
     args = parser.parse_args()
 
-    from asmr.evaluation.query_encoders import create_query_encoder
+    from asmr.train.query_encoder import HfQueryEncoder
 
-    encoder = create_query_encoder(args.encoder)
+    encoder = HfQueryEncoder(model_name=args.encoder)
     splits = tuple(s.strip() for s in args.splits.split(",") if s.strip())
     for split in splits:
-        build_query_emb_cache(
+        build_mag_query_emb_cache(
             args.data_root,
             split,
             encoder,

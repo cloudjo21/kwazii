@@ -1,5 +1,3 @@
-import json
-import os
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Union
@@ -12,7 +10,6 @@ from transformers import AutoConfig, AutoModel, AutoProcessor
 
 
 class Transformer(nn.Module):
-
     save_in_root: bool = True
 
     def __init__(
@@ -81,7 +78,7 @@ class Transformer(nn.Module):
                             image_indices.append(i)
                         else:
                             text_indices.append(i)
-                    except Exception as e:
+                    except Exception:
                         text_indices.append(i)
             elif isinstance(text, Image.Image):
                 image_indices.append(i)

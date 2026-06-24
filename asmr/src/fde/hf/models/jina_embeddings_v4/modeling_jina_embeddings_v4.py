@@ -43,7 +43,6 @@ class JinaEmbeddingsV4Processor(Qwen2_5_VLProcessor):
         self,
         images: Union[List[Image.Image], List[List[Image.Image]]],
     ) -> BatchFeature:
-
         if isinstance(images[0], list):
             images = cast(List[List[Image.Image]], images)
             text_doc = []
@@ -63,7 +62,9 @@ class JinaEmbeddingsV4Processor(Qwen2_5_VLProcessor):
             ] * len(images)
 
         # The following code is a hack to make sure the scatter in DDP is done correctly when training on multiple GPUs
-        batch_doc = self(text=text_doc, images=images, padding="longest", return_tensors="pt")  # type: ignore
+        batch_doc = self(
+            text=text_doc, images=images, padding="longest", return_tensors="pt"
+        )  # type: ignore
         # Separate pixel_values for each image
         offsets = batch_doc["image_grid_thw"][:, 1] * batch_doc["image_grid_thw"][:, 2]
         # Pad pixel_values to the same length to be able to make it into a tensor
@@ -95,7 +96,6 @@ class JinaEmbeddingsV4Processor(Qwen2_5_VLProcessor):
         prefix: Optional[str] = None,
         padding: Optional[str] = None,
     ) -> BatchFeature:
-
         max_length = (
             self.text_max_length
             if max_length is None
@@ -332,9 +332,9 @@ class JinaEmbeddingsV4Model(Qwen2_5_VLForConditionalGeneration):
             collate_fn=processor_fn,
         )
         if return_multivector and len(data) > 1:
-            assert (
-                not return_numpy
-            ), "`return_numpy` is not supported when `return_multivector=True` and more than one data is encoded"
+            assert not return_numpy, (
+                "`return_numpy` is not supported when `return_multivector=True` and more than one data is encoded"
+            )
         results = []
         self.eval()
         for batch in tqdm(dataloader, desc=desc, disable=self.verbosity == 0):

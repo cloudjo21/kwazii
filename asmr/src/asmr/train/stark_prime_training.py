@@ -28,8 +28,9 @@ from asmr.datasets.stark_prime.torch_dataset import (
     _example_from_shortlist,
     collate_stark_batch,
 )
+from asmr.encode.protocol import TrainableTextEncoderProtocol
 from asmr.evaluation.query_encoders import QueryEncoderProtocol, _JinaLoraEncoderWrapper
-from asmr.evaluation.stark_prime_disk_index_v2 import PrimeDiskIndexStore
+from asmr.evaluation.stark_disk_index import StarkDiskIndexStore
 from asmr.train.aggregation import MFARFieldAdapter
 from asmr.train.config import TrainConfig
 from asmr.train.query_encoder import JinaLoraQueryEncoder
@@ -62,7 +63,7 @@ def resolve_training_phase(
 
 def resolve_train_dataset(
     train_queries: list[PrimeQuery],
-    store: PrimeDiskIndexStore | None,
+    store: StarkDiskIndexStore | None,
     encoder: QueryEncoderProtocol,
     caches: dict[str, QueryEmbeddingCache],
     *,
@@ -126,7 +127,7 @@ def resolve_train_dataset(
             raise ShortlistCacheMissingError(msg)
 
     if store is None:
-        msg = "PrimeDiskIndexStore required to build train shortlists inline"
+        msg = "StarkDiskIndexStore required to build train shortlists inline"
         raise ValueError(msg)
 
     examples: list[StarkRankingExample] = []
@@ -217,6 +218,9 @@ def _build_optimizer(
                 ],
                 weight_decay=cfg.weight_decay,
             )
+        assert isinstance(encoder, TrainableTextEncoderProtocol), (
+            f"Joint training requires TrainableTextEncoderProtocol, got {type(encoder)}"
+        )
         enc_module = encoder.trainable_module()
         enc_module.to(device)
         return optim.AdamW(
@@ -235,7 +239,7 @@ def _build_optimizer(
 
 def train_mfar(
     train_queries: list[PrimeQuery],
-    store: PrimeDiskIndexStore | None,
+    store: StarkDiskIndexStore | None,
     encoder: QueryEncoderProtocol,
     caches: dict[str, QueryEmbeddingCache],
     cfg: TrainMfarConfig,
@@ -252,7 +256,8 @@ def train_mfar(
     """Train MFARFieldAdapter (Phase 1 or Phase 2 joint)."""
     phase = resolve_training_phase(cfg.phase, encoder)
     f_num = len(PRIME_FIELD_NAMES)
-    adapter = MFARFieldAdapter(encoder.embedding_dim, f_num, 2).to(device)
+    adapter = MFARFieldAdapter(encoder.embedding_dim, f_num, 2)
+    adapter.to(device)
     train_cfg = TrainConfig(
         query_dim=encoder.embedding_dim,
         normalize_scores=cfg.normalize_scores,

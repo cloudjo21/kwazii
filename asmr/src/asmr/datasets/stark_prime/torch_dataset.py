@@ -8,7 +8,6 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import torch
-from torch import Tensor
 from torch.utils.data import Dataset
 
 from asmr.datasets.stark_prime.loader import PrimeQuery

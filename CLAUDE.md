@@ -27,3 +27,5 @@
   > 예: `context usage free: 19% (used: 81%)` → handoff 권장 구간
 - **절차**: `/handoff` 실행 → 핸드오프 문서 생성 완료 후 → `/clear` 실행
 - Claude는 위 절차를 순서대로 자동 수행할 것
+
+~/.claude/guides/ 아래 문서들 읽고 참고해

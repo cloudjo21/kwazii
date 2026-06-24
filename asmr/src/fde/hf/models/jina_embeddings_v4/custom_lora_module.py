@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import warnings
 from typing import Any, Optional, Union, List
 
 import torch
@@ -9,23 +8,25 @@ import torch.nn as nn
 
 from peft.tuners.lora import LoraLayer
 
+
 class MultiAdapterLinear(nn.Module, LoraLayer):
     """
     Custom LoRA module supporting multiple adapters for a linear layer.
-    
+
     This module extends the standard LoRA implementation to support multiple task-specific
     adapters that can be dynamically selected during the forward pass. The task_label
     parameter passed to the forward function determines which LoRA adapter(s) to use:
     - If task_label is a string, all examples in the batch use the same adapter
     - If task_label is a list of strings, each example can use a different adapter
-    
+
     This enables efficient multi-task inference where all task-specific LoRA adapters
     are loaded in memory simultaneously and dynamically selected per example, eliminating
     the need to switch adapter states between tasks and allowing optimal throughput
     for mixed-task batches.
-    
+
     Derived from peft.tuners.lora.Linear.
     """
+
     def __init__(
         self,
         base_layer,
@@ -60,8 +61,13 @@ class MultiAdapterLinear(nn.Module, LoraLayer):
         )
         self.is_target_conv_1d_layer = is_target_conv_1d_layer
 
-
-    def forward(self, x: torch.Tensor, task_label: Union[str, List[str]], *args: Any, **kwargs: Any) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        task_label: Union[str, List[str]],
+        *args: Any,
+        **kwargs: Any,
+    ) -> torch.Tensor:
         self._check_forward_args(x, *args, **kwargs)
 
         if self.disable_adapters:
@@ -78,7 +84,7 @@ class MultiAdapterLinear(nn.Module, LoraLayer):
             for active_adapter in self.active_adapters:
                 if active_adapter not in lora_A_keys:
                     continue
-                
+
                 if isinstance(task_label, str):
                     lora_A = self.lora_A[active_adapter][task_label]
                     lora_B = self.lora_B[active_adapter][task_label]
@@ -89,22 +95,24 @@ class MultiAdapterLinear(nn.Module, LoraLayer):
                 else:
                     unique_tasks = list(set(task_label))
                     lora_output = torch.zeros_like(result)
-                    
+
                     for task in unique_tasks:
-                        task_indices = [i for i, t in enumerate(task_label) if t == task]
+                        task_indices = [
+                            i for i, t in enumerate(task_label) if t == task
+                        ]
                         task_x = x[task_indices]
-                        
+
                         lora_A = self.lora_A[active_adapter][task]
                         lora_B = self.lora_B[active_adapter][task]
                         dropout = self.lora_dropout[active_adapter]
                         scaling = self.scaling[active_adapter]
-                        
+
                         task_x = self._cast_input_dtype(task_x, lora_A.weight.dtype)
                         task_lora_value = lora_B(lora_A(dropout(task_x))) * scaling
-                        
+
                         for i, idx in enumerate(task_indices):
                             lora_output[idx] = task_lora_value[i]
-                    
+
                     result = result + lora_output
 
             result = result.to(torch_result_dtype)
@@ -114,7 +122,6 @@ class MultiAdapterLinear(nn.Module, LoraLayer):
     def __repr__(self) -> str:
         rep = super().__repr__()
         return "lora." + rep
-
 
     def update_layer(
         self,
@@ -129,7 +136,9 @@ class MultiAdapterLinear(nn.Module, LoraLayer):
     ):
         # This code works for linear layers, override for other layer types
         if r <= 0:
-            raise ValueError(f"`r` should be a positive integer value but the value passed is {r}")
+            raise ValueError(
+                f"`r` should be a positive integer value but the value passed is {r}"
+            )
 
         self.r[adapter_name] = r
         self.lora_alpha[adapter_name] = lora_alpha
@@ -140,14 +149,18 @@ class MultiAdapterLinear(nn.Module, LoraLayer):
 
         self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
         # Actual trainable parameters
-        self.lora_A[adapter_name] = nn.ModuleDict({
-            task_name: nn.Linear(self.in_features, r, bias=False)
-            for task_name in self.task_names
-        })
-        self.lora_B[adapter_name] = nn.ModuleDict({
-            task_name: nn.Linear(r, self.out_features, bias=lora_bias)
-            for task_name in self.task_names
-        })
+        self.lora_A[adapter_name] = nn.ModuleDict(
+            {
+                task_name: nn.Linear(self.in_features, r, bias=False)
+                for task_name in self.task_names
+            }
+        )
+        self.lora_B[adapter_name] = nn.ModuleDict(
+            {
+                task_name: nn.Linear(r, self.out_features, bias=lora_bias)
+                for task_name in self.task_names
+            }
+        )
         self.lora_bias[adapter_name] = lora_bias
 
         if use_rslora:
@@ -167,10 +180,15 @@ class MultiAdapterLinear(nn.Module, LoraLayer):
             # initialize A the same way as the default for nn.Linear and B to zero
             # https://github.com/microsoft/LoRA/blob/a0a92e0f26c067cf94747bdbf1ce73793fa44d19/loralib/layers.py#L124
             for task_name in self.task_names:
-                nn.init.kaiming_uniform_(self.lora_A[adapter_name][task_name].weight, a=math.sqrt(5))
+                nn.init.kaiming_uniform_(
+                    self.lora_A[adapter_name][task_name].weight, a=math.sqrt(5)
+                )
         elif init_lora_weights.lower() == "gaussian":
             for task_name in self.task_names:
-                nn.init.normal_(self.lora_A[adapter_name][task_name].weight, std=1 / self.r[adapter_name])
+                nn.init.normal_(
+                    self.lora_A[adapter_name][task_name].weight,
+                    std=1 / self.r[adapter_name],
+                )
         else:
             raise ValueError(f"Unknown initialization {init_lora_weights=}")
         for task_name in self.task_names:
@@ -178,9 +196,10 @@ class MultiAdapterLinear(nn.Module, LoraLayer):
         if self.lora_bias[adapter_name]:
             for task_name in self.task_names:
                 nn.init.zeros_(self.lora_B[adapter_name][task_name].bias)
-    
 
-    def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
+    def merge(
+        self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None
+    ) -> None:
         """
         Merge the active adapter weights into the base weights
         """

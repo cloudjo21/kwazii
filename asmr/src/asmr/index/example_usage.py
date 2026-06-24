@@ -51,7 +51,7 @@ def main():
     print("\n3. Testing configuration validation...")
     try:
         # This should fail - HF_AUTO requires model_path
-        invalid_config = FieldConfig(
+        _invalid_config = FieldConfig(
             name="test",
             tokenizer_type=TokenizerType.HF_AUTO,
             representation_type=RepresentationType.SPARSE,
@@ -61,7 +61,7 @@ def main():
 
     try:
         # This should fail - DENSE requires faiss_index_path
-        invalid_config2 = FieldConfig(
+        _invalid_config2 = FieldConfig(
             name="test",
             tokenizer_type=TokenizerType.SPLIT,
             representation_type=RepresentationType.DENSE,

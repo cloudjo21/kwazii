@@ -4,12 +4,14 @@ from pydantic import BaseModel
 
 class FieldBasedRankingItem(BaseModel):
     """Individual ranking item with document ID and score"""
+
     doc_id: str
     score: float
 
 
 class FieldBasedRanking(BaseModel):
     """Ranking results for a field-based search"""
+
     field_name: str
     query: str
     items: List[FieldBasedRankingItem]
@@ -27,10 +29,12 @@ class FieldBasedRanking(BaseModel):
 
     def top_k(self, k: int) -> "FieldBasedRanking":
         """Return top-k results"""
-        return FieldBasedRanking(field_name=self.field_name,
-                                 query=self.query,
-                                 items=self.items[:k],
-                                 total_retrieved=len(self.items))
+        return FieldBasedRanking(
+            field_name=self.field_name,
+            query=self.query,
+            items=self.items[:k],
+            total_retrieved=len(self.items),
+        )
 
     def __len__(self) -> int:
         return len(self.items)

@@ -4,16 +4,28 @@ import argparse
 import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import numpy as np
 import torch
 
+from asmr.datasets.query_cache import (
+    QueryEmbeddingCache,
+    load_query_caches,
+    resolve_query_emb,
+)
 from asmr.datasets.stark_mag.loader import MagQuery, build_mag_corpus, load_mag_queries
+from asmr.datasets.stark_mag.query_cache import build_mag_query_emb_cache
 from asmr.evaluation.metrics import hit_at_k, mean_reciprocal_rank, recall_at_k
-from asmr.evaluation.stark_mag_indexes import MagFieldIndexes
+from asmr.evaluation.stark_disk_index import StarkDiskIndexStore
+from asmr.evaluation.stark_mag_disk_index import (
+    build_mag_disk_index,
+    is_mag_index_built,
+)
 from asmr.train.config import TrainMfarConfig
+from asmr.train.gpu_setup import setup_gpu
 from asmr.train.inference import apply_aggregation_head
 from asmr.train.query_encoder import HfQueryEncoder
 from asmr.train.stark_mag_training import train_mfar_mag
@@ -52,7 +64,7 @@ class BenchmarkReport:
 
 def evaluate_ranked(
     queries: list[MagQuery],
-    rank_fn,
+    rank_fn: Callable[[MagQuery], list[str]],
     *,
     eval_k: int = 20,
 ) -> BenchmarkMetrics:
@@ -86,6 +98,11 @@ def run_benchmark(
     eval_k: int = 20,
     seed: int = 42,
     cache_dir: Path | None = None,
+    mps_thread_pct: int | None = None,
+    build_index: bool = False,
+    rebuild_index: bool = False,
+    warm_query_cache: bool = False,
+    use_query_cache: bool = False,
 ) -> BenchmarkReport:
     import random
 
@@ -93,14 +110,36 @@ def run_benchmark(
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = setup_gpu(mps_thread_pct)
     logger.info("Device: %s", device)
 
     corpus = build_mag_corpus(data_root, max_docs=max_docs)
     logger.info("MAG corpus: %d docs", len(corpus.doc_ids))
 
     encoder = HfQueryEncoder(model_name=encoder_name, device=str(device))
-    indexes = MagFieldIndexes(corpus, encoder)
+
+    if cache_dir is None:
+        raise ValueError(
+            "cache_dir is required — provide --cache-dir to specify the index location."
+        )
+    index_dir = cache_dir / "mag_field_index"
+    if build_index or rebuild_index:
+        build_mag_disk_index(corpus, encoder, index_dir, rebuild=rebuild_index)
+    if not is_mag_index_built(index_dir):
+        raise RuntimeError(
+            f"MAG field index not found at {index_dir}. "
+            "Run with --build-index to build it first."
+        )
+    indexes: StarkDiskIndexStore = StarkDiskIndexStore(index_dir)
+
+    query_caches: dict[str, QueryEmbeddingCache] = {}
+    if warm_query_cache or use_query_cache:
+        if cache_dir is None:
+            raise ValueError("--cache-dir required when using query cache")
+        if warm_query_cache:
+            for split in ("train", "test"):
+                build_mag_query_emb_cache(data_root, split, encoder, cache_dir)
+        query_caches = load_query_caches(cache_dir, encoder_name=encoder.name)
 
     train_queries = load_mag_queries(data_root, "train")
     test_queries = load_mag_queries(data_root, "test")
@@ -122,10 +161,11 @@ def run_benchmark(
         device,
         cache_dir=cache_dir,
         encoder_name=encoder_name,
+        query_caches=query_caches,
     )
 
     def rank_mfar_all(q: MagQuery) -> list[str]:
-        q_emb = encoder.encode([q.query])[0].numpy()
+        q_emb = resolve_query_emb(q, encoder, query_caches, "test")
         doc_ids, scores, mask = indexes.shortlist_hybrid(q.query, q_emb, shortlist_k)
         if not doc_ids:
             return []
@@ -194,6 +234,31 @@ def main() -> None:
     parser.add_argument("--eval-k", type=int, default=20)
     parser.add_argument("--cache-dir", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--mps-thread-pct", type=int, default=None)
+    parser.add_argument(
+        "--build-index",
+        action="store_true",
+        default=False,
+        help="Build the MAG field index before running (skip if already built).",
+    )
+    parser.add_argument(
+        "--rebuild-index",
+        action="store_true",
+        default=False,
+        help="Force-rebuild the MAG field index even if it already exists.",
+    )
+    parser.add_argument(
+        "--warm-query-cache",
+        action="store_true",
+        default=False,
+        help="Build query embedding cache before running (skip if already built).",
+    )
+    parser.add_argument(
+        "--use-query-cache",
+        action="store_true",
+        default=False,
+        help="Load and use existing query embedding cache (no build).",
+    )
     args = parser.parse_args()
 
     report = run_benchmark(
@@ -206,6 +271,11 @@ def main() -> None:
         max_eval_queries=args.max_eval_queries,
         eval_k=args.eval_k,
         cache_dir=args.cache_dir,
+        mps_thread_pct=args.mps_thread_pct,
+        build_index=args.build_index,
+        rebuild_index=args.rebuild_index,
+        warm_query_cache=args.warm_query_cache,
+        use_query_cache=args.use_query_cache,
     )
 
     payload = {

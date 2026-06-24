@@ -27,7 +27,8 @@ class ImageEncodingIndexer:
     def _initialize_faiss_index(self):
         """Initialize FAISS index from config path or create new one"""
         if self.config.faiss_index_path and os.path.exists(
-                self.config.faiss_index_path):
+            self.config.faiss_index_path
+        ):
             self.load_index(self.config.faiss_index_path)
         else:
             # Will be initialized when first documents are added
@@ -39,8 +40,7 @@ class ImageEncodingIndexer:
         # Use IndexFlatIP for cosine similarity (after normalization)
         self.index = faiss.IndexFlatIP(dimension)
 
-    def add_documents(self, doc_ids: List[str],
-                      images: List[Union[str, Image.Image]]):
+    def add_documents(self, doc_ids: List[str], images: List[Union[str, Image.Image]]):
         """Add image documents to the index (batch processing)"""
         if not doc_ids or not images:
             return
@@ -78,15 +78,17 @@ class ImageEncodingIndexer:
         """Add a single image document (wrapper for batch method)"""
         self.add_documents([doc_id], [image])
 
-    def search(self,
-               query_image: Union[str, Image.Image],
-               k: int = 10) -> FieldBasedRanking:
+    def search(
+        self, query_image: Union[str, Image.Image], k: int = 10
+    ) -> FieldBasedRanking:
         """Search for similar images"""
         if self.index is None or self.index.ntotal == 0:
-            return FieldBasedRanking(field_name=self.config.name,
-                                     query="<image_query>",
-                                     items=[],
-                                     total_retrieved=0)
+            return FieldBasedRanking(
+                field_name=self.config.name,
+                query="<image_query>",
+                items=[],
+                total_retrieved=0,
+            )
 
         # Process query image
         if isinstance(query_image, str):
@@ -104,31 +106,33 @@ class ImageEncodingIndexer:
 
         # Convert to results format
         ranking_items = []
-        for i, (similarity, idx) in enumerate(zip(similarities[0],
-                                                  indices[0])):
+        for i, (similarity, idx) in enumerate(zip(similarities[0], indices[0])):
             if idx != -1:  # Valid result
                 ranking_items.append(
-                    FieldBasedRankingItem(doc_id=self.doc_ids[idx],
-                                          score=float(similarity)))
+                    FieldBasedRankingItem(
+                        doc_id=self.doc_ids[idx], score=float(similarity)
+                    )
+                )
 
-        return FieldBasedRanking(field_name=self.config.name,
-                                 query="<image_query>",
-                                 items=ranking_items,
-                                 total_retrieved=len(ranking_items))
+        return FieldBasedRanking(
+            field_name=self.config.name,
+            query="<image_query>",
+            items=ranking_items,
+            total_retrieved=len(ranking_items),
+        )
 
-    def search_with_text(self,
-                         query_text: str,
-                         k: int = 10) -> FieldBasedRanking:
+    def search_with_text(self, query_text: str, k: int = 10) -> FieldBasedRanking:
         """Search images using text query (cross-modal search)"""
         if self.index is None or self.index.ntotal == 0:
-            return FieldBasedRanking(field_name=self.config.name,
-                                     query=query_text,
-                                     items=[],
-                                     total_retrieved=0)
+            return FieldBasedRanking(
+                field_name=self.config.name,
+                query=query_text,
+                items=[],
+                total_retrieved=0,
+            )
 
         # Encode text query
-        query_embedding = self.encoder.encode_text([query_text],
-                                                   PromptType.QUERY)
+        query_embedding = self.encoder.encode_text([query_text], PromptType.QUERY)
 
         # Normalize query embedding
         faiss.normalize_L2(query_embedding)
@@ -139,17 +143,20 @@ class ImageEncodingIndexer:
 
         # Convert to results format
         ranking_items = []
-        for i, (similarity, idx) in enumerate(zip(similarities[0],
-                                                  indices[0])):
+        for i, (similarity, idx) in enumerate(zip(similarities[0], indices[0])):
             if idx != -1:  # Valid result
                 ranking_items.append(
-                    FieldBasedRankingItem(doc_id=self.doc_ids[idx],
-                                          score=float(similarity)))
+                    FieldBasedRankingItem(
+                        doc_id=self.doc_ids[idx], score=float(similarity)
+                    )
+                )
 
-        return FieldBasedRanking(field_name=self.config.name,
-                                 query=query_text,
-                                 items=ranking_items,
-                                 total_retrieved=len(ranking_items))
+        return FieldBasedRanking(
+            field_name=self.config.name,
+            query=query_text,
+            items=ranking_items,
+            total_retrieved=len(ranking_items),
+        )
 
     def save_index(self, filepath: Optional[str] = None):
         """Save the FAISS index to disk"""
@@ -157,8 +164,7 @@ class ImageEncodingIndexer:
             filepath = self.config.faiss_index_path
 
         if filepath is None:
-            raise ValueError(
-                "No filepath provided and no faiss_index_path in config")
+            raise ValueError("No filepath provided and no faiss_index_path in config")
 
         # Ensure directory exists
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
